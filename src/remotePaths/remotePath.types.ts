@@ -4,6 +4,12 @@ import { InputConfigRemotePath } from "../types/config.types";
 import { DiffEntry } from "../diffReport/diffReport.types";
 
 /**
+ * Absolute paths: POSIX (`/…`), Windows drive (`X:/…` or `X:\…`) and UNC (`\\server\share`).
+ * Drive-relative (`X:…`) and single-backslash (`\…`) paths are not absolute on Windows.
+ */
+const ABSOLUTE_PATH_REGEX = /^([a-zA-Z]:[\\/]|\\\\|\/)/;
+
+/**
  * Zod schema for validating remote path configuration
  */
 export const RemotePathConfigSchema = z.object({
@@ -11,11 +17,11 @@ export const RemotePathConfigSchema = z.object({
   remote_path: z
     .string()
     .min(1, "Remote path is required")
-    .regex(/^([a-zA-Z]:|\/)/, "Remote path must be an absolute path (start with / or X:/ for Windows)"),
+    .regex(ABSOLUTE_PATH_REGEX, "Remote path must be an absolute path (start with /, X:/ or \\\\server\\share)"),
   local_path: z
     .string()
     .min(1, "Local path is required")
-    .regex(/^([a-zA-Z]:|\/)/, "Local path must be an absolute path (start with / or X:/ for Windows)"),
+    .regex(ABSOLUTE_PATH_REGEX, "Local path must be an absolute path (start with /, X:/ or \\\\server\\share)"),
 });
 
 /**
