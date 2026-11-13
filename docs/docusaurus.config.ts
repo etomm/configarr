@@ -9,11 +9,12 @@ const config: Config = {
   tagline: "Simplified configuration management for your Arr applications like Sonarr, Radarr and more.",
   favicon: "img/favicon.ico",
 
-  // Set the production url of your site here
-  url: "https://configarr.de",
+  // Set the production url of your site here. DOCS_URL lets a fork build for its own host,
+  // e.g. https://<owner>.github.io with DOCS_BASE_URL=/<repo>/ for a GitHub Pages project site.
+  url: process.env.DOCS_URL || "https://configarr.de",
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: "/",
+  baseUrl: process.env.DOCS_BASE_URL || "/",
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
