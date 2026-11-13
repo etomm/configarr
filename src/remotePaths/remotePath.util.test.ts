@@ -14,11 +14,22 @@ describe("normalizeRemotePath", () => {
     ["forward-slash UNC path with trailing slash", "//server/share/downloads/", "//server/share/downloads"],
     ["Windows drive path with trailing backslash", "D:\\downloads\\", "D:\\downloads"],
     ["Windows drive path with trailing slash", "D:/downloads/", "D:/downloads"],
-    ["Windows drive root", "C:\\", "C:"],
-    ["POSIX root", "/", ""],
+    ["Windows drive root", "C:\\", "C:\\"],
+    ["Windows drive root with forward slash", "C:/", "C:\\"],
+    ["Windows drive root with repeated separators", "C:///", "C:\\"],
+    ["POSIX root", "/", "/"],
+    ["POSIX root with trailing slash", "///", "/"],
     ["empty path", "", ""],
   ])("normalizes a %s", (_name, input, expected) => {
     expect(normalizeRemotePath(input)).toBe(expected);
+  });
+
+  it("keeps the Windows drive root distinct from a drive-relative path", () => {
+    expect(normalizeRemotePath("C:\\")).not.toBe(normalizeRemotePath("C:"));
+  });
+
+  it("keeps the POSIX root distinct from an empty path", () => {
+    expect(normalizeRemotePath("/")).not.toBe(normalizeRemotePath(""));
   });
 
   it("keeps a trailing backslash on a POSIX path, where it is a filename character", () => {

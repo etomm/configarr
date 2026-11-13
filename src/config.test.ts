@@ -816,6 +816,23 @@ describe("mergeConfigsAndTemplates", () => {
       );
     });
 
+    test("rejects a UNC path without a share at config load", () => {
+      expect(validate([{ host: "download-client", remote_path: String.raw`\\server`, local_path: "/data/downloads" }])).toThrow(
+        ConfigValidationError,
+      );
+      expect(validate([{ host: "download-client", remote_path: "\\\\", local_path: "/data/downloads" }])).toThrow(ConfigValidationError);
+    });
+
+    test("accepts a drive-relative path but warns that it is deprecated", () => {
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      try {
+        expect(validate([{ host: "download-client", remote_path: String.raw`C:downloads`, local_path: "/data/downloads" }])).not.toThrow();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("drive-relative"));
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     test("treats UNC paths differing only by a trailing separator as duplicates", () => {
       expect(
         validate([

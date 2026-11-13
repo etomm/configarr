@@ -279,6 +279,12 @@ export const parseIncludes = (input: InputConfigIncludeItem): ConfigIncludeItem 
 });
 
 /**
+ * Drive-relative Windows path (`X:…`), as opposed to drive-absolute (`X:\…` or `X:/…`).
+ * Accepted for backward compatibility but deprecated.
+ */
+const DRIVE_RELATIVE_PATH = /^[a-zA-Z]:(?![\\/])/;
+
+/**
  * Validate remote path mappings configuration
  * Checks for duplicate host + remote_path combinations and validates structure
  * @throws Error if validation fails
@@ -291,6 +297,17 @@ const validateRemotePaths = (remotePaths: InputConfigRemotePath[]): void => {
       RemotePathConfigSchema.parse(config);
     } catch (error) {
       throw new ConfigValidationError(`Invalid remote path config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    for (const [field, value] of [
+      ["remote_path", config.remote_path],
+      ["local_path", config.local_path],
+    ] as const) {
+      if (DRIVE_RELATIVE_PATH.test(value)) {
+        logger.warn(
+          `Remote path mapping ${field} '${value}' is drive-relative, which is deprecated. Use an absolute path (X:\\…, /… or \\\\server\\share).`,
+        );
+      }
     }
 
     // Check for duplicates by host + remote_path combination

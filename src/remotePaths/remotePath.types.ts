@@ -5,23 +5,20 @@ import { DiffEntry } from "../diffReport/diffReport.types";
 
 /**
  * Absolute paths: POSIX (`/…`), Windows drive (`X:/…` or `X:\…`) and UNC (`\\server\share`).
- * Drive-relative (`X:…`) and single-backslash (`\…`) paths are not absolute on Windows.
+ * A UNC path needs both a server and a share component. Drive-relative (`X:…`) values are
+ * still accepted here for backward compatibility and warned about at config load.
  */
-const ABSOLUTE_PATH_REGEX = /^([a-zA-Z]:[\\/]|\\\\|\/)/;
+const ABSOLUTE_OR_DRIVE_PATH_REGEX = /^([a-zA-Z]:|\\\\[^\\/]+[\\/][^\\/]+|\/)/;
+
+const PATH_REQUIREMENTS = "must be an absolute path (start with /, X:/ or \\\\server\\share)";
 
 /**
  * Zod schema for validating remote path configuration
  */
 export const RemotePathConfigSchema = z.object({
   host: z.string().min(1, "Host is required"),
-  remote_path: z
-    .string()
-    .min(1, "Remote path is required")
-    .regex(ABSOLUTE_PATH_REGEX, "Remote path must be an absolute path (start with /, X:/ or \\\\server\\share)"),
-  local_path: z
-    .string()
-    .min(1, "Local path is required")
-    .regex(ABSOLUTE_PATH_REGEX, "Local path must be an absolute path (start with /, X:/ or \\\\server\\share)"),
+  remote_path: z.string().min(1, "Remote path is required").regex(ABSOLUTE_OR_DRIVE_PATH_REGEX, `Remote path ${PATH_REQUIREMENTS}`),
+  local_path: z.string().min(1, "Local path is required").regex(ABSOLUTE_OR_DRIVE_PATH_REGEX, `Local path ${PATH_REQUIREMENTS}`),
 });
 
 /**

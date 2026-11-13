@@ -1,6 +1,9 @@
 /** Windows absolute paths: drive-qualified (`X:\…`, `X:/…`) or UNC (`\\server\share`). */
 const WINDOWS_ABSOLUTE_PATH = /^([a-zA-Z]:[\\/]|\\\\)/;
 
+/** Drive root (`X:\` or `X:/`), as opposed to the drive-relative `X:`. */
+const WINDOWS_DRIVE_ROOT = /^([a-zA-Z]):[\\/]+$/;
+
 /**
  * Normalize a path for comparison by removing trailing separators.
  *
@@ -12,10 +15,16 @@ const WINDOWS_ABSOLUTE_PATH = /^([a-zA-Z]:[\\/]|\\\\)/;
  * `//server/share` (a POSIX path) is different from `\\server\share` (UNC).
  * Only Windows-style paths strip `\` as well as `/`.
  *
- * Root paths normalize to `X:` or an empty string. That is unambiguous as long as
- * both sides of a comparison go through this function and config-authored values
- * are validated to be absolute.
+ * Roots keep a separator rather than normalizing to an empty string or a bare
+ * drive. Otherwise the POSIX `/` would collide with an empty result, and the
+ * drive root `X:\` would collide with the drive-relative `X:`.
  */
 export function normalizeRemotePath(path: string): string {
-  return WINDOWS_ABSOLUTE_PATH.test(path) ? path.replace(/[\\/]+$/, "") : path.replace(/\/+$/, "");
+  const driveRoot = WINDOWS_DRIVE_ROOT.exec(path);
+  if (driveRoot) {
+    return `${driveRoot[1]}:\\`;
+  }
+
+  const normalized = WINDOWS_ABSOLUTE_PATH.test(path) ? path.replace(/[\\/]+$/, "") : path.replace(/\/+$/, "");
+  return normalized === "" && path.startsWith("/") ? "/" : normalized;
 }

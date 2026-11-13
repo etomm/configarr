@@ -17,19 +17,26 @@ every run.
 
 - **Accepted absolute forms:** POSIX (`/…`), drive absolute (`X:\…` and `X:/…`), UNC (`\\server\share…`)
   and forward-slash UNC (`//server/share…`, already covered by the POSIX form).
-- **Rejected forms:** relative (`downloads`), drive-relative (`X:…`) and single leading backslash
-  (`\…`), because none of them is an absolute path on Windows. Drive-relative was previously accepted
-  by accident; rejecting it is the correct behaviour and the issue asked for it.
+- **UNC needs server and share:** a bare `\\` or `\\server` is rejected. Without that requirement the
+  invalid prefix normalized to the same value as some other paths and could collide.
+- **Rejected forms:** relative (`downloads`) and single leading backslash (`\…`), because neither is an
+  absolute path on Windows.
+- **Drive-relative stays accepted, deprecated:** `X:…` was accepted before this change. Rejecting it
+  directly would be a breaking config-validation change, so it is accepted with a warning at config
+  load and can be removed in a later major.
 - **No payload rewriting:** the UNC string is sent to \*arr unchanged. Forward-slash UNC is not
   converted to backslash UNC, because \*arr may treat the two forms differently when matching.
 - **Normalization only in comparison, separator set depends on path style:** Windows-style paths
   (drive-qualified and `\\` UNC) strip trailing `\` and `/`; POSIX and `//server/share` paths strip
   only `/`. On Linux a backslash is an ordinary filename character, so `/data\` is not `/data`, and
-  `//server/share` is not `\\server\share`. Roots normalize to `X:`/empty, which is unambiguous
-  because both sides go through the same function and config values are validated as absolute.
+  `//server/share` is not `\\server\share`. Roots keep a separator: the POSIX root `/` is preserved
+  rather than normalized to an empty string, and the Windows drive root `X:\` stays `X:\` instead of
+  collapsing to the drive-relative `X:`. Neither root can collide with another normalized value.
 - **One shared normalizer:** `normalizeRemotePath` lives in `src/remotePaths/remotePath.util.ts` and is
   used by both the syncer and config duplicate detection, which previously had its own slash-only
   copy of the logic.
+- **Live coverage:** every media-*arr e2e file creates a UNC mapping, asserts the trailing `\` stored by
+  \*arr, and relies on the existing second-run diff assertion for idempotency.
 
 ## Out of scope
 

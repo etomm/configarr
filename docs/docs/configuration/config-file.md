@@ -543,32 +543,6 @@ sonarr:
               - WEBRip-1080p
 ```
 
-Quality groups are named sets of qualities. The \*arr apps number groups from `1000` upwards,
-and a cutoff (and `upgrade.until_quality`) refers to that number. Configarr keeps the number
-stable: on update it reuses the id the server already uses for a group with the same name, and only
-allocates a new one for a group that does not exist yet. Inserting, removing or reordering groups in
-the config therefore no longer renumbers the remaining groups or silently moves `until_quality` to a
-different group.
-
-To pin a group id explicitly — for example to match a profile that is also edited outside Configarr —
-set `id` on the group. Ids must be `>= 1000` and unique; setting `id` on a plain quality is an error.
-
-```yml
-qualities:
-  - name: WEB 2160p
-    id: 1003 # optional, pinned group id
-    qualities:
-      - WEBDL-2160p
-      - WEBRip-2160p
-```
-
-The order of `qualities` is the preference ranking: the first entry is the highest priority (shown at
-the top in the \*arr UI), and Configarr sends it last in the API array. When updating an existing
-profile, qualities you do not list keep the position they already have on the server instead of being
-moved to the top or bottom; only qualities the server does not have yet are placed according to
-`quality_sort`. Declare the entries in the same order the \*arr UI shows them, otherwise Configarr
-intentionally changes the preference order.
-
 Sonarr v5 stores size limits on each quality-profile quality instead of globally. Keep
 `quality_definition` for a shared default, then set `quality_sizes` on a profile only
 where it needs a different value. Per-profile values take precedence field by field;
@@ -1226,23 +1200,16 @@ sonarr:
 
 Because \*Arr servers return stored secrets (passwords, API keys, `secretToken`, `appToken`) masked as `********`, Configarr cannot read existing secrets from the server. Two settings control when secret fields in `fields` are sent to existing download clients:
 
-| Setting                        | Default | Behavior                                                                                                                                                                                                             |
-| ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `update_password`              | `false` | When `true`, always overwrites secret fields with configured values on every run. Available since v1.19.0.                                                                                                           |
-| `update_password_on_test_fail` | `false` | Experimental since v1.39.0. When `true`, a secret specified together with other changes is written with them; when only the secret changes, the stored secret is tested and replaced only on a credential rejection. |
+| Setting                        | Default | Behavior                                                                                                                           |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `update_password`              | `false` | When `true`, always overwrites secret fields with configured values on every run. Available since v1.19.0.                         |
+| `update_password_on_test_fail` | `false` | Experimental since v1.39.0. When `true`, tests the stored secret first and updates it only when that test rejects the credentials. |
 
 `update_password: true` takes precedence over `update_password_on_test_fail`.
 
-When `update_password_on_test_fail: true` is enabled (and `update_password` is false or unset):
+When `update_password_on_test_fail: true` is enabled (and `update_password` is false or unset), Configarr runs the connection test once per run for each valid existing client matched by name and type. It runs only when the server client is enabled, its non-secret settings are unchanged (otherwise the normal update path runs, no test), and the configuration contains a non-empty secret that is not `********`. A stored secret returned in plaintext is treated like the mask: it is not compared to the configured value. The test posts the server resource, whose secret is usually `********`; *arr substitutes the stored secret. In `DRY_RUN` the test still runs. A credential rejection is reported as an update but nothing is sent. A down client, a timeout, or an *arr 5xx leaves the stored secret in place.
 
-- If a non-secret field differs, Configarr updates the client. When the configuration sets a secret field, the configured secret is included in that update; otherwise the stored secret is kept.
-- If every non-secret setting matches and the configuration sets a secret field (including an empty value), Configarr tests the stored secret. A passing test leaves it; a credential rejection writes the configured secret, including an empty value; a down client, a timeout or an *arr 5xx leaves it in place. If both the configured and stored secrets are empty, there is nothing to write and the client stays unchanged. A client that is disabled on the server is not probed; if its other settings match, its stored secret stays unchanged. A non-secret difference still triggers an update, and a configured secret is included in that update.
-
-A stored secret returned in plaintext is treated like the mask: it is not compared to the configured value. A secret field that is not in the configuration is never tested or written. `update_password: true` writes the configured secrets on every run and takes precedence; an omitted secret is left untouched. `update_password: false` writes secrets only on creation. Configarr does not force-save enabled clients: a write rejected by *arr fails and leaves the server unchanged. In `DRY_RUN` the stored-secret test still runs, but no write is attempted.
-
-If the server reports a secret field as empty or `null` and the configuration sets a non-empty secret, the stored secret is tested like any other: a credential rejection writes the configured secret; a pass keeps the empty stored value.
-
-An omitted secret field means Configarr does not manage that secret. An explicit empty string is a value like any other: with `update_password: true` it clears the stored secret, with `update_password_on_test_fail` it is written together with other changes or after a credential rejection (an empty configured value over an empty stored one is a no-op), and with `update_password: false` it is not written on update and produces no diff.
+If the server reports a secret field as empty and the configuration sets it, Configarr sends the configured secret without a connection test, since an empty secret cannot pass one.
 
 ### Download Client Configuration <span className="theme-doc-version-badge badge badge--secondary configarr-badge">1.19.0</span>
 
@@ -1289,7 +1256,9 @@ sonarr:
 - `remote_path`: The path as seen by the download client (must be unique combined with host)
 - `local_path`: The path as accessible by the \*Arr application
 - Both paths must be absolute: POSIX (`/downloads`), a Windows drive path (`D:\Downloads` or `D:/Downloads`)
-  or a UNC path (`\\server\share\…`)
+  or a UNC path with server and share (`\\server\share\…`). A bare `\\server` or `\\` is rejected
+- Drive-relative Windows paths (`D:Downloads`) are accepted for backward compatibility but deprecated;
+  Configarr logs a warning and they should be rewritten as absolute paths
 - In YAML, backslashes are escapes inside double-quoted scalars (`"\f"` is a form feed). Write UNC paths with
   single quotes (`'\\server\share'`) or escape each backslash (`"\\\\server\\share"`)
 - \*Arr apps append a trailing separator when storing a mapping, and Configarr compares paths with

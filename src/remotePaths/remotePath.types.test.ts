@@ -62,10 +62,17 @@ describe("RemotePathTypes", () => {
       expect(() => parse("/downloads", String.raw`\\server\share`)).not.toThrow();
     });
 
+    it("should accept a drive-relative path for backward compatibility", () => {
+      // Deprecated and warned about in validateRemotePaths, but not rejected yet.
+      expect(() => parse(String.raw`C:downloads`)).not.toThrow();
+    });
+
     it.each([
       ["relative path", "downloads"],
-      ["drive-relative path", String.raw`C:downloads`],
       ["single leading backslash", String.raw`\server\downloads`],
+      ["bare UNC prefix", "\\\\"],
+      ["UNC server without a share", String.raw`\\server`],
+      ["UNC server with a trailing separator", "\\\\server\\"],
       ["empty path", ""],
     ])("should reject a %s", (_name, remotePath) => {
       expect(() => parse(remotePath)).toThrow(/must be an absolute path/);
