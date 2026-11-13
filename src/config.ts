@@ -47,6 +47,7 @@ import {
   MergedConfigInstance,
 } from "./types/config.types";
 import { RemotePathConfigSchema } from "./remotePaths/remotePath.types";
+import { normalizeRemotePath } from "./remotePaths/remotePath.util";
 import { ConfigValidationError, validateConfig as validateConfigData, warnOrThrowConfig } from "./validation";
 import {
   TrashCFGroupMapping,
@@ -293,8 +294,8 @@ const validateRemotePaths = (remotePaths: InputConfigRemotePath[]): void => {
     }
 
     // Check for duplicates by host + remote_path combination
-    // Normalize path for duplicate detection (remove trailing slashes)
-    const normalizedRemotePath = config.remote_path.replace(/\/+$/, "");
+    // Normalize path for duplicate detection (remove trailing separators, `/` and `\`)
+    const normalizedRemotePath = normalizeRemotePath(config.remote_path);
     const key = `${config.host}||${normalizedRemotePath}`;
     if (keys.has(key)) {
       throw new ConfigValidationError(`Duplicate remote path mapping: '${config.host} + ${config.remote_path}' already configured.`);
