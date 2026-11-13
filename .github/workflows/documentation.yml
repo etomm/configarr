@@ -33,6 +33,11 @@ jobs:
         working-directory: docs
         env:
           PNPM_CONFIG_IGNORE_WORKSPACE: "true"
+          # Optional repository variables. Unset keeps the production site (https://configarr.de, "/").
+          # A fork on a GitHub Pages project site sets e.g. DOCS_URL=https://<owner>.github.io and
+          # DOCS_BASE_URL=/<repo>/.
+          DOCS_URL: ${{ vars.DOCS_URL }}
+          DOCS_BASE_URL: ${{ vars.DOCS_BASE_URL }}
         run: |
           pnpm install --frozen-lockfile
           pnpm build
