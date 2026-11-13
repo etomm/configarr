@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [1.39.2-etomm.4](https://github.com/etomm/configarr/compare/v1.39.2-etomm.3...v1.39.2-etomm.4) (2026-11-13)
+
+### Bug Fixes
+
+* align download client secret updates with the configured values ([47a5dad](https://github.com/etomm/configarr/commit/47a5dad9bc86cd1f14186c2b52e7775e2fe79e07))
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [1.39.1](https://github.com/raydak-labs/configarr/compare/v1.39.0...v1.39.1) (2026-11-06)
 
 ### Bug Fixes
