@@ -1,4 +1,4 @@
-﻿# Download client secret test order
+# Download client secret test order
 
 Status: implemented (2026-11-13)
 

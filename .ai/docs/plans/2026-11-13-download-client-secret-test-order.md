@@ -1,4 +1,4 @@
-﻿# Plan: download client secret test order
+# Plan: download client secret test order
 
 Spec: [2026-11-13-download-client-secret-test-order-design](../specs/2026-11-13-download-client-secret-test-order-design.md)
 

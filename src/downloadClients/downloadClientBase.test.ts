@@ -1,4 +1,4 @@
-﻿import { describe, expect, test, beforeEach, vi } from "vitest";
+import { describe, expect, test, beforeEach, vi } from "vitest";
 vi.mock("../env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../env")>();
   return {
@@ -69,7 +69,7 @@ class MockDownloadClientSync extends BaseDownloadClientSync<MediaDownloadClientR
   }
 }
 
-describe("BaseDownloadClientSync â€“ sync accounting", () => {
+describe("BaseDownloadClientSync – sync accounting", () => {
   const api = {
     getDownloadClientSchema: vi.fn(async () => [
       {
@@ -179,7 +179,7 @@ describe("BaseDownloadClientSync â€“ sync accounting", () => {
   });
 });
 
-describe("BaseDownloadClientSync â€“ utility methods", () => {
+describe("BaseDownloadClientSync – utility methods", () => {
   let sync: MockDownloadClientSync;
 
   beforeEach(() => {
