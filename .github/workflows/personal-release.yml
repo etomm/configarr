@@ -1,0 +1,109 @@
+name: Personal Release
+
+on:
+  push:
+    branches: ["etomm/main"]
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - "Dockerfile-deno.Dockerfile"
+      - "esbuild.ts"
+      - "generate-api.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pkgs/**"
+      - "scripts/**"
+
+permissions: {}
+
+concurrency:
+  group: personal-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compute the next personal version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git tag --points-at "$GITHUB_SHA" | grep -q -- '-etomm\.'; then
+            echo "Commit is already tagged; nothing to release"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(node -p "require('./package.json').version.split('-')[0]")"
+          IFS=. read -r major minor patch <<< "$base"
+          next="${major}.${minor}.$((patch + 1))"
+          last="$(git tag -l "v${next}-etomm.*" | grep -oE '[0-9]+$' | sort -n | tail -1)"
+          tag="v${next}-etomm.$(( ${last:-0} + 1 ))"
+
+          # A draft with the same tag may be left over from an abandoned release.
+          if [ "$(gh release view "$tag" --json isDraft -q .isDraft 2>/dev/null || true)" = "true" ]; then
+            gh release delete "$tag" --yes
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag"
+
+      - name: Tag and create the draft release
+        if: steps.version.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 | tr -d '\n')"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" --draft --verify-tag --generate-notes --title "$TAG"
+
+  docker:
+    needs: prepare
+    if: needs.prepare.outputs.tag != ''
+    uses: ./.github/workflows/build.yml # zizmor: ignore[self-repository] actionlint rejects `$/`
+    permissions:
+      contents: read
+      packages: write
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  cli:
+    needs: prepare
+    if: needs.prepare.outputs.tag != ''
+    uses: ./.github/workflows/cli-release.yml # zizmor: ignore[self-repository] actionlint rejects `$/`
+    permissions:
+      contents: write
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  publish:
+    needs: [prepare, docker, cli]
+    if: needs.prepare.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
