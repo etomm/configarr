@@ -15,6 +15,7 @@ vi.mock("../logger", () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -62,6 +63,15 @@ describe("uiConfigSyncer", () => {
       const result = await syncUiConfig(mockClient, "RADARR", localConfig);
 
       expect(result).toEqual({ updated: false, arrType: "RADARR", fieldChanges: [] });
+      expect(mockUpdateUiConfig).not.toHaveBeenCalled();
+    });
+
+    test("should reject declared fields the server does not expose", async () => {
+      mockGetUiConfig.mockResolvedValue({ id: 1, theme: "light" });
+
+      await expect(syncUiConfig(mockClient, "PROWLARR", { theme: "dark", firstDayOfWeek: 3 })).rejects.toThrow(
+        "PROWLARR ui_config does not expose firstDayOfWeek",
+      );
       expect(mockUpdateUiConfig).not.toHaveBeenCalled();
     });
 

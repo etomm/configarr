@@ -1,18 +1,25 @@
-import type { ArrTypeToClient } from "../clients/client";
 import type { DiffEntry } from "../diffReport/diffReport.types";
 import { getEnvs } from "../env";
 import { logger } from "../logger";
-import type { MediaArrType } from "../types/common.types";
+import type { ArrType } from "../types/common.types";
 import type { UiConfigType } from "../types/config.types";
 import { compareObjectsCarr } from "../util";
-import type { UiConfigResource, UiConfigSyncResult } from "./uiConfig.types";
+import { ConfigValidationError } from "../validation";
+import type { UiConfigSyncResult } from "./uiConfig.types";
 
-type UiConfigClient = Pick<ArrTypeToClient[MediaArrType], "getUiConfig" | "updateUiConfig">;
+/**
+ * The generated UI resources differ per app but share the fields we manage.
+ * The concrete return type is therefore narrowed at this boundary.
+ */
+type UiConfigClient = {
+  getUiConfig(): Promise<unknown>;
+  updateUiConfig(id: string, data: unknown): Promise<unknown>;
+};
 
 /**
  * Type guard to validate that server config has the required id field
  */
-function hasValidId(config: Record<string, unknown>): config is UiConfigResource {
+function hasValidId(config: Record<string, unknown>): config is Record<string, unknown> & { id: number } {
   return typeof config.id === "number" && config.id > 0;
 }
 
@@ -21,7 +28,7 @@ function hasValidId(config: Record<string, unknown>): config is UiConfigResource
  */
 export async function syncUiConfig(
   client: UiConfigClient,
-  arrType: MediaArrType,
+  arrType: ArrType,
   uiConfig: UiConfigType | undefined,
 ): Promise<UiConfigSyncResult> {
   // If ui_config is undefined/not present, skip management entirely
@@ -34,12 +41,29 @@ export async function syncUiConfig(
     // Fetch current server UI config
     logger.debug(`Fetching UI config from ${arrType}...`);
     const serverConfig = await client.getUiConfig();
+    if (serverConfig === null || typeof serverConfig !== "object") {
+      throw new Error(`UI config for ${arrType} is not an object`);
+    }
 
-    // Cast to generic record for comparison - generated types don't have index signatures
+    // Generated types don't have index signatures; compare through a plain record.
     const serverConfigRecord = serverConfig as Record<string, unknown>;
 
+    // Apply only what this product exposes: the same UI resource is not guaranteed to
+    // carry every field across *arr versions.
+    const declared = (uiConfig !== null && typeof uiConfig === "object" ? Object.entries(uiConfig) : []).filter(
+      ([, value]) => value !== undefined,
+    );
+    const unsupported = declared.filter(([key]) => !Object.hasOwn(serverConfigRecord, key)).map(([key]) => key);
+    if (unsupported.length) {
+      throw new ConfigValidationError(`${arrType} ui_config does not expose ${unsupported.join(", ")}`);
+    }
+    const supported = Object.fromEntries(declared.filter(([key]) => Object.hasOwn(serverConfigRecord, key)));
+    if (Object.keys(supported).length === 0) {
+      return { updated: false, arrType, fieldChanges: [] };
+    }
+
     // Calculate diff directly using compareObjectsCarr
-    const { changes, equal } = compareObjectsCarr(serverConfigRecord, uiConfig);
+    const { changes, equal } = compareObjectsCarr(serverConfigRecord, supported);
 
     if (equal) {
       logger.info(`UI config for ${arrType} is already up-to-date`);
@@ -62,14 +86,15 @@ export async function syncUiConfig(
 
     // Execute update - merge server config with local config
     const updatedConfig = {
-      ...serverConfig,
-      ...uiConfig,
+      ...serverConfigRecord,
+      ...supported,
     };
 
-    await client.updateUiConfig(serverConfigRecord.id.toString(), updatedConfig);
+    await client.updateUiConfig(String(serverConfigRecord.id), updatedConfig);
     logger.info(`Successfully updated UI config for ${arrType}`);
     return { updated: true, arrType, fieldChanges: changes };
   } catch (error: unknown) {
+    if (error instanceof ConfigValidationError) throw error;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`Failed to sync UI config for ${arrType}: ${errorMessage}`);
     throw new Error(`UI config sync failed for ${arrType}: ${errorMessage}`);

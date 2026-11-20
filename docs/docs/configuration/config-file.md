@@ -1639,8 +1639,10 @@ Omitted fields retain their server values. Whisparr rejects authentication, cred
   These fields are Sonarr v5-only; Configarr rejects them on Sonarr v4 and other media managers before applying any sync changes.
 
 - Experimental support for `ui_config` (since v1.21.0)
-  Allows configuring UI settings like theme, language, calendar preferences, etc.
-  The supported elements are dependent on the \*arr used.
+  Allows configuring UI settings like theme, language, calendar preferences, etc. on
+  Sonarr, Radarr, Whisparr, Readarr/Chaptarr, Lidarr and Prowlarr.
+  The supported elements are dependent on the \*arr used; a declared key the instance does
+  not return rejects the block and names the key.
   Check the following API documentation of available fields:
 
   UI Config APIs:

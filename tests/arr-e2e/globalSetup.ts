@@ -24,6 +24,12 @@ export default async function setup(project: TestProject): Promise<() => void> {
       env.CHAPTARR_API_KEY ?? process.env.CHAPTARR_API_KEY ?? "",
       "/api/v1/system/status",
     );
+  } else if (env.PROWLARR_BASE_URL ?? process.env.PROWLARR_BASE_URL) {
+    await waitForArrApi(
+      env.PROWLARR_BASE_URL ?? process.env.PROWLARR_BASE_URL ?? "",
+      env.PROWLARR_API_KEY ?? process.env.PROWLARR_API_KEY ?? "",
+      "/api/v1/system/status",
+    );
   } else {
     await waitForAllArrApis();
   }

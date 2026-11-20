@@ -9,12 +9,3 @@ export interface UiConfigSyncResult {
   arrType: ArrType;
   fieldChanges: FieldChange[];
 }
-
-/**
- * Minimal UI config resource shape with required fields for sync operations.
- * The actual server response contains many more fields depending on the *arr type.
- */
-export interface UiConfigResource {
-  id: number;
-  [key: string]: unknown;
-}

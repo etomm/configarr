@@ -593,6 +593,7 @@ export const InputConfigProwlarrInstanceSchema = z.object({
   notifications: InputConfigNotificationsSchema.optional(),
   indexer_config: z.unknown().optional(),
   host_config: HostConfigSchema.optional(),
+  ui_config: UiConfigTypeSchema.optional(),
 });
 export type InputConfigProwlarrInstance = z.infer<typeof InputConfigProwlarrInstanceSchema>;
 
