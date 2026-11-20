@@ -576,6 +576,26 @@ describe("readarr (live)", () => {
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
   });
 
+  test("syncs general host settings and rejects OIDC", async () => {
+    const original = await client.getHostConfig();
+    const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const analytics_enabled = !original.analyticsEnabled;
+    try {
+      const config = mediaConfig("READARR", { host_config: { log_level, analytics_enabled } });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["READARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.logLevel).toBe(log_level);
+      expect(updated.analyticsEnabled).toBe(analytics_enabled);
+
+      const rejected = await syncConfig(mediaConfig("READARR", { host_config: { oidcScopes: "openid" } }), first.workspace);
+      expect(rejected.result.exitCode).not.toBe(0);
+      expect(rejected.result.stdout + rejected.result.stderr).toContain("does not expose oidcScopes");
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test("syncs the backup policy and stays idempotent", async () => {
     const original = await client.getHostConfig();
     const backup_interval = original.backupInterval === 7 ? 1 : 7;

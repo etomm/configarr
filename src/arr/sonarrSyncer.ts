@@ -4,7 +4,7 @@ import { StandardDelayProfileSync } from "../delayProfiles/delayProfileBase";
 import type { InstanceDiffReport } from "../diffReport/diffReport.types";
 import { SonarrDownloadClientSync } from "../downloadClients/downloadClientSonarr";
 import { getEnvs } from "../env";
-import { SonarrHostConfigSync } from "../hostConfig/hostConfigSonarr";
+import { FederatedHostConfigSync } from "../hostConfig/hostConfigSync";
 import { SonarrImportListSync } from "../importLists/importListSonarr";
 import { SonarrMediaManagementSync } from "../mediaManagement/mediaManagementSonarr";
 import { QualityDefinitionSonarrSync } from "../qualityDefinitions/qualityDefinitionSonarr";
@@ -29,7 +29,7 @@ export class SonarrSyncer {
       client,
       supportsProfileQualitySizes: await client.supportsProfileQualitySizes(),
       syncs: {
-        hostConfig: new SonarrHostConfigSync(client),
+        hostConfig: new FederatedHostConfigSync(client, "Sonarr"),
         qd: new QualityDefinitionSonarrSync(client),
         mm: new SonarrMediaManagementSync(client),
         qp: qualityProfiles,
