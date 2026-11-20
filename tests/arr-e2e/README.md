@@ -89,8 +89,8 @@ Per-*arr files are deliberately duplicated instead of generated from a shared fa
 
 ## Coverage
 
-Host settings run on Sonarr v5 and Radarr v7; v4/v5/v6 reject the v7/v5-only authentication block before other writes.
-The backup policy (`backup_folder`, `backup_interval`, `backup_retention`) is a separate part of `host_config` and runs on every app and version.
+Host settings run on every app and version. A field the product or version does not expose rejects the block and names the field, including the authentication/OIDC block on older Radarr and Sonarr builds.
+The backup policy (`backup_folder`, `backup_interval`, `backup_retention`) is part of the same `host_config` block.
 Chaptarr runs the same suite as Readarr in `chaptarr.e2e.test.ts`; the compose stack exposes it as `CHAPTARR` on `18788`.
 
 Feature × arr × create / update / delete / idempotent (second run Diff Report `(up to date - no changes)` + GET). `C` create, `U` update, `D` delete, `I` idempotent. `—` not applicable.
@@ -102,7 +102,8 @@ Feature × arr × create / update / delete / idempotent (second run Diff Report 
 | Quality definitions            | CUI      | CUI      | CUI      | CUI      | CUI      | —        |
 | Root folders                   | CDI      | CDI      | CDI      | CUDI     | CUDI     | —        |
 | Media settings (MM/naming/UI)  | CUI      | CUI      | CUI      | CUI      | CUI      | —        |
-| General auth/TLS settings      | CUI      | CUI      | —        | —        | —        | —        |
+| General host settings          | CUI      | CUI      | CUI      | CUI      | CUI      | CUI      |
+| Auth/TLS host settings         | CUI      | CUI      | —        | —        | —        | —        |
 | Backup policy (`host_config`)  | CUI      | CUI      | CUI      | CUI      | CUI      | CUI      |
 | Delay profiles                 | CUDI     | CUDI     | CUDI     | CUDI     | CUDI     | —        |
 | Release profiles               | CUDI     | CUDI     | CUDI     | CUDI     | CUDI     | —        |

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ServerCache } from "../cache";
 import { ChaptarrDownloadClientSync } from "../downloadClients/downloadClientChaptarr";
+import { ChaptarrHostConfigSync } from "../hostConfig/hostConfigSync";
 import { ChaptarrMetadataProfileSync } from "../metadataProfiles/metadataProfileChaptarr";
 import { QualityProfileChaptarrSync } from "../qualityProfiles/qualityProfileChaptarr";
 import { ChaptarrRootFolderSync } from "../rootFolder/rootFolderChaptarr";
@@ -57,5 +58,10 @@ describe("ChaptarrSyncer", () => {
   it("uses the Chaptarr metadata profile label", () => {
     const syncer = new ChaptarrSyncer() as unknown as { createMetadataProfileSync(api: unknown): unknown };
     expect(syncer.createMetadataProfileSync(client)).toBeInstanceOf(ChaptarrMetadataProfileSync);
+  });
+
+  it("uses the Chaptarr host-config field set", () => {
+    const syncer = new ChaptarrSyncer() as unknown as { createHostConfigSync(api: unknown): unknown };
+    expect(syncer.createHostConfigSync(client)).toBeInstanceOf(ChaptarrHostConfigSync);
   });
 });

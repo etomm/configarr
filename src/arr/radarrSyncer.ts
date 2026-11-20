@@ -3,7 +3,7 @@ import { getClient } from "../clients/client";
 import { StandardDelayProfileSync } from "../delayProfiles/delayProfileBase";
 import type { InstanceDiffReport } from "../diffReport/diffReport.types";
 import { RadarrDownloadClientSync } from "../downloadClients/downloadClientRadarr";
-import { RadarrHostConfigSync } from "../hostConfig/hostConfigRadarr";
+import { FederatedHostConfigSync } from "../hostConfig/hostConfigSync";
 import { RadarrImportListSync } from "../importLists/importListRadarr";
 import { RadarrMediaManagementSync } from "../mediaManagement/mediaManagementRadarr";
 import { QualityDefinitionPreferredSync } from "../qualityDefinitions/qualityDefinition";
@@ -26,7 +26,7 @@ export class RadarrSyncer {
       instanceConfig: instance,
       client,
       syncs: {
-        hostConfig: new RadarrHostConfigSync(client),
+        hostConfig: new FederatedHostConfigSync(client, "Radarr"),
         importLists: new RadarrImportListSync(client),
         qd: new QualityDefinitionPreferredSync(client),
         mm: new RadarrMediaManagementSync(client),
