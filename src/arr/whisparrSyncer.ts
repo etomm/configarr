@@ -3,7 +3,7 @@ import { getClient } from "../clients/client";
 import { StandardDelayProfileSync } from "../delayProfiles/delayProfileBase";
 import type { InstanceDiffReport } from "../diffReport/diffReport.types";
 import { WhisparrDownloadClientSync } from "../downloadClients/downloadClientWhisparr";
-import { WhisparrHostConfigSync } from "../hostConfig/hostConfigWhisparr";
+import { FederatedHostConfigSync } from "../hostConfig/hostConfigSync";
 import { MediaManagementSync } from "../mediaManagement/mediaManagement";
 import { QualityDefinitionPreferredSync } from "../qualityDefinitions/qualityDefinition";
 import { QualityProfileWhisparrSync } from "../qualityProfiles/qualityProfileWhisparr";
@@ -31,7 +31,7 @@ export class WhisparrSyncer {
         releaseProfiles: new ReleaseProfileWhisparrSync(client),
         root: new PathRootFolderSync(client),
         downloadClients: new WhisparrDownloadClientSync(client),
-        hostConfig: new WhisparrHostConfigSync(client),
+        hostConfig: new FederatedHostConfigSync(client, "Whisparr", instance.base_url),
         indexerConfig: client,
       },
     });

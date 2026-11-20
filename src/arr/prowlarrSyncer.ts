@@ -1,10 +1,9 @@
-import type { HostConfigResource } from "../__generated__/prowlarr/data-contracts";
 import { ServerCache } from "../cache";
 import { getClient } from "../clients/client";
 import { DiffCollector } from "../diffReport/diffCollector";
 import type { InstanceDiffReport } from "../diffReport/diffReport.types";
 import { ProwlarrDownloadClientSync } from "../downloadClients/downloadClientProwlarr";
-import { BackupHostConfigSync } from "../hostConfig/hostConfigSync";
+import { HostConfigSync } from "../hostConfig/hostConfigSync";
 import { logger } from "../logger";
 import { syncNotifications, validateNotifications } from "../notifications/notifications";
 import { syncProwlarrProviders } from "../prowlarr/prowlarrSyncer";
@@ -42,8 +41,8 @@ export class ProwlarrSyncer {
       if (!parsed.success) {
         throw new ConfigValidationError("Invalid host_config: " + parsed.error.issues.map((issue) => issue.message).join("; "));
       }
-      const hostConfig = new BackupHostConfigSync<HostConfigResource>(client, "Prowlarr");
-      hostConfig.validate(parsed.data, system.version);
+      const hostConfig = new HostConfigSync(client, "Prowlarr", instance.base_url);
+      hostConfig.validate(parsed.data);
       instance.host_config = parsed.data;
       diffCollector.add(await hostConfig.sync(parsed.data));
     }

@@ -186,6 +186,56 @@ describe("radarr (live)", () => {
     }
   });
 
+  test("tests the declared local password and stays idempotent", async () => {
+    const major = Number((await client.getSystemStatus()).version?.split(".")[0]);
+    // Local login still validates on v5/v6; the v7 federated auth path refuses it even with the mask semantics.
+    if (major >= 7) return;
+    const local_username = "e2e-local";
+    const local_password = "e2e-local-password";
+    const loginAccepted = async () => {
+      const response = await fetch(new URL("login", `${baseUrl}/`), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: local_username, password: local_password, rememberMe: "false" }),
+        redirect: "manual",
+      });
+      return (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.().some((cookie) => /Auth=/i.test(cookie));
+    };
+    const first = await syncConfig(
+      mediaConfig("RADARR", {
+        host_config: { local_username, local_password, rotate_local_password: true },
+      }),
+    );
+    assertPipelineSucceeded(first.result, ["RADARR"]);
+    expect(first.result.stdout + first.result.stderr).not.toContain(local_password);
+    await expect(loginAccepted()).resolves.toBe(true);
+
+    // The server masks the password; the probe, not the stored value, keeps the second run quiet.
+    // The account is left at these known credentials because *arr treats an empty password as "keep".
+    const second = await syncConfig(mediaConfig("RADARR", { host_config: { local_username, local_password } }), first.workspace);
+    assertPipelineSucceeded(second.result, ["RADARR"]);
+    assertDiffUpToDate(second.result, ["RADARR"]);
+  });
+
+  test("syncs general host settings and stays idempotent", async () => {
+    const original = await client.getHostConfig();
+    const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const analytics_enabled = !original.analyticsEnabled;
+    try {
+      const config = mediaConfig("RADARR", { host_config: { log_level, analytics_enabled } });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["RADARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.logLevel).toBe(log_level);
+      expect(updated.analyticsEnabled).toBe(analytics_enabled);
+      const second = await syncConfig(config, first.workspace);
+      assertPipelineSucceeded(second.result, ["RADARR"]);
+      assertDiffUpToDate(second.result, ["RADARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test.each([
     { label: "invalid enum", host_config: { authenticationMethod: "invalid" } },
     { label: "unsupported field", host_config: { apiKey: "not-managed" } },
@@ -208,14 +258,14 @@ describe("radarr (live)", () => {
     }
   });
 
-  test("rejects v7 host settings on older Radarr before applying other changes", async () => {
+  test("rejects host settings the Radarr version does not expose", async () => {
     const major = Number((await client.getSystemStatus()).version?.split(".")[0]);
     if (major >= 7) return;
     const before = await client.getUiConfig();
     const config = mediaConfig("RADARR", { host_config: { oidcScopes: "openid" }, ui_config: { firstDayOfWeek: 6 } });
     const run = await syncConfig(config);
     expect(run.result.exitCode).not.toBe(0);
-    expect(run.result.stdout + run.result.stderr).toContain("host_config requires Radarr v7 or Sonarr v5");
+    expect(run.result.stdout + run.result.stderr).toContain("does not expose oidcScopes");
     expect((await client.getUiConfig()).firstDayOfWeek).toBe(before.firstDayOfWeek);
   });
 

@@ -167,13 +167,13 @@ describe("sonarr (live)", () => {
     );
   });
 
-  test("host settings sync on Sonarr v5 and reject v4 before writes", async () => {
+  test("host settings sync on Sonarr v5 and reject unexposed fields on v4", async () => {
     const isV5 = await client.supportsMediaManagementControls();
     if (!isV5) {
       const before = await client.getUiConfig();
       const run = await syncConfig(mediaConfig("SONARR", { host_config: { oidcScopes: "openid" }, ui_config: { firstDayOfWeek: 6 } }));
       expect(run.result.exitCode).not.toBe(0);
-      expect(run.result.stdout + run.result.stderr).toContain("host_config requires Radarr v7 or Sonarr v5");
+      expect(run.result.stdout + run.result.stderr).toContain("does not expose oidcScopes");
       expect((await client.getUiConfig()).firstDayOfWeek).toBe(before.firstDayOfWeek);
       return;
     }

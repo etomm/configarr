@@ -588,6 +588,83 @@ describe("chaptarr (live)", () => {
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
   });
 
+  test("syncs general host settings and previews Chaptarr OIDC fields", async () => {
+    const original = await client.getHostConfig();
+    const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const originalVerified = (original as unknown as { oidcRequireEmailVerified?: boolean }).oidcRequireEmailVerified ?? false;
+    try {
+      const config = chaptarrConfig({ host_config: { log_level } });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["CHAPTARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.logLevel).toBe(log_level);
+
+      const rejected = await syncConfig(chaptarrConfig({ host_config: { analytics_enabled: false } }), first.workspace);
+      expect(rejected.result.exitCode).not.toBe(0);
+      expect(rejected.result.stdout + rejected.result.stderr).toContain("does not expose analytics_enabled");
+
+      const dry = await syncConfig(chaptarrConfig({ host_config: { oidc_require_email_verified: !originalVerified } }), first.workspace, {
+        dryRun: true,
+      });
+      assertPipelineSucceeded(dry.result, ["CHAPTARR"]);
+      expect(dry.result.stdout + dry.result.stderr).toContain("oidcRequireEmailVerified");
+      expect(((await client.getHostConfig()) as unknown as { oidcRequireEmailVerified?: boolean }).oidcRequireEmailVerified).toBe(
+        originalVerified,
+      );
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
+  test("applies the Chaptarr OIDC authentication method and stays idempotent", async () => {
+    const original = await client.getHostConfig();
+    const oidc = {
+      authenticationMethod: "oidc",
+      authenticationRequired: "enabled",
+      oidcAuthority: "https://identity.example.com",
+      oidcClientId: "chaptarr-e2e",
+      oidcUserIdentifier: "sub",
+      oidcScopes: "openid profile email",
+      oidc_allowed_email_domains: "example.com",
+      oidc_require_email_verified: true,
+      // The authority is a placeholder; do not spend a discovery timeout on every run.
+      test_secrets: false,
+    } as const;
+    try {
+      const first = await syncConfig(
+        chaptarrConfig({ host_config: { ...oidc, oidcClientSecret: "e2e-oidc-secret", update_oidc_client_secret: true } }),
+      );
+      assertPipelineSucceeded(first.result, ["CHAPTARR"]);
+      // The generated Readarr contract omits the fork's OIDC fields, which the live Chaptarr API returns.
+      const updated = (await client.getHostConfig()) as typeof original & {
+        oidcAuthority?: string;
+        oidcClientId?: string;
+        oidcUserIdentifier?: string;
+        oidcScopes?: string;
+        oidcClientSecret?: string;
+        oidcAllowedEmailDomains?: string;
+        oidcRequireEmailVerified?: boolean;
+      };
+      expect(updated.authenticationMethod).toBe("oidc");
+      expect(updated.authenticationRequired).toBe("enabled");
+      expect(updated.oidcAuthority).toBe(oidc.oidcAuthority);
+      expect(updated.oidcClientId).toBe(oidc.oidcClientId);
+      expect(updated.oidcUserIdentifier).toBe(oidc.oidcUserIdentifier);
+      expect(updated.oidcScopes).toBe(oidc.oidcScopes);
+      expect(updated.oidcClientSecret).toBe("********");
+      expect(updated.oidcAllowedEmailDomains).toBe("example.com");
+      expect(updated.oidcRequireEmailVerified).toBe(true);
+      expect(first.result.stdout + first.result.stderr).not.toContain("e2e-oidc-secret");
+
+      // Without the rotation flag the masked secret must compare as unchanged.
+      const second = await syncConfig(chaptarrConfig({ host_config: oidc }), first.workspace);
+      assertPipelineSucceeded(second.result, ["CHAPTARR"]);
+      assertDiffUpToDate(second.result, ["CHAPTARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test("syncs the backup policy and stays idempotent", async () => {
     const original = await client.getHostConfig();
     const backup_interval = original.backupInterval === 7 ? 1 : 7;

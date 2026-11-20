@@ -1506,11 +1506,14 @@ Prowlarr download clients use the same `download_clients` block as the other \*A
 General settings synchronization is experimental.
 :::
 
-`host_config` manages the backup policy on every \*arr. Authentication and TLS fields
-are additionally supported on Radarr v7 and Sonarr v5; older Radarr and Sonarr versions
-accept backup settings but reject authentication settings before any sync changes.
-Lidarr, Readarr and Prowlarr expose only the backup fields. Omitted fields retain their
-current server values.
+`host_config` manages the host settings of every \*arr: general settings, the backup
+policy, authentication, local credentials and TLS. The same block is valid on Radarr,
+Sonarr, Lidarr, Readarr/Chaptarr, Whisparr and Prowlarr.
+
+Configarr applies every declared field the product exposes. If the live host resource does
+not return a declared field, the block is rejected with a message naming that field and no
+host settings are written. Omitted fields retain their current server values.
+
 
 ### Backup policy
 
@@ -1554,11 +1557,59 @@ host-settings change on these apps therefore resets `trustCgnatIpAddresses` to `
 when it was `true`; set it again afterwards if a reverse proxy depends on it. Sonarr v5
 (`/api/v5/settings/general`) does not have this field and is not affected.
 
+### General settings
+
+| Field                      | Type    | Meaning                                                                                     |
+| -------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `log_level`                | string  | Log level: `trace`, `debug`, `info`, `warn`, `error` or `fatal`.                            |
+| `analytics_enabled`        | boolean | Send anonymous usage analytics.                                                             |
+| `instance_name`            | string  | Display name shown in the UI and notifications.                                             |
+| `launch_browser`           | boolean | Open a browser when the app starts.                                                         |
+| `certificate_validation`   | string  | `enabled`, `disabledForLocalAddresses` or `disabled`.                                       |
+| `update_automatically`     | boolean | Let the app update itself.                                                                  |
+| `update_mechanism`         | string  | `builtIn`, `script`, `external`, `apt` or `docker`.                                         |
+| `branch`                   | string  | Update branch.                                                                              |
+| `url_base`                 | string  | URL base path. Keep it in sync with the `base_url` used to reach the instance.              |
+
+`update_automatically`, `update_mechanism` and `branch` can conflict with a separate
+image updater. Leave them out when GitOps owns the image version.
+
+```yaml
+sonarr:
+  series:
+    base_url: http://sonarr:8989
+    api_key: !secret SONARR_API_KEY
+    host_config:
+      log_level: info
+      analytics_enabled: false
+      instance_name: sonarr
+```
+
 ### Authentication and TLS
 
-Radarr v7 and Sonarr v5 also accept the authentication and TLS fields below. The
-version gate applies only to these fields; a backup-only block is accepted on older
-versions.
+Authentication and TLS fields appear on the apps and versions that expose them: Radarr
+v7, Sonarr v5 and Chaptarr currently do, while other apps may not return the OIDC or
+`allowedHosts` fields. Declaring a field the instance does not expose rejects the block and
+names the field; no host settings are written.
+
+| Field                    | Type    | Meaning                                                                    |
+| ------------------------ | ------- | -------------------------------------------------------------------------- |
+| `authenticationMethod`   | string  | `none`, `basic`, `forms` or `external`; Chaptarr also accepts `oidc`.      |
+| `authenticationRequired` | string  | `enabled`, `disabledForLocalAddresses` or `disabledForLocalhost`.          |
+| `allowedHosts`           | string  | Comma-separated hosts allowed to access the UI.                            |
+| `local_username`         | string  | Local fallback account name.                                               |
+| `local_password`         | secret  | Local fallback password. Use `!secret` or `!env`, never a literal.         |
+| `rotate_local_password`  | boolean | Rewrite `local_password` even when the app already accepts it.             |
+| `oidcAuthority`          | string  | OIDC authority URL.                                                        |
+| `oidcClientId`           | string  | OIDC client id.                                                            |
+| `oidcUserIdentifier`     | string  | Claim used as the user identifier.                                         |
+| `oidcScopes`             | string  | Space-separated OIDC scopes.                                               |
+| `oidcClientSecret`       | secret  | OIDC client secret. Use `!secret` or `!env`.                               |
+| `update_oidc_client_secret` | boolean | Rewrite `oidcClientSecret` even when the declared secret is already accepted. |
+| `test_secrets`           | boolean | Test declared `local_password` and `oidcClientSecret` against the app and identity provider. Default `true`. |
+| `enableSsl`              | boolean | Enable HTTPS.                                                              |
+| `sslCertPath`            | string  | Certificate path on the *arr server.                                       |
+| `sslKeyPath`             | string  | Private key path on the *arr server.                                       |
 
 ```yaml
 radarr:
@@ -1567,8 +1618,11 @@ radarr:
     api_key: !secret RADARR_API_KEY
     # (experimental) since v1.39.0
     host_config:
-      authenticationMethod: oidc
+      authenticationMethod: external
       authenticationRequired: enabled
+      allowedHosts: ""
+      local_username: admin
+      local_password: !secret RADARR_LOCAL_PASSWORD
       oidcAuthority: https://identity.example.com
       oidcClientId: radarr
       oidcClientSecret: !secret RADARR_OIDC_SECRET
@@ -1577,22 +1631,41 @@ radarr:
       # enableSsl: true
       # sslCertPath: /config/tls/cert.pem
       # sslKeyPath: /config/tls/key.pem
-      # allowedHosts: localhost,127.0.0.1
       # update_oidc_client_secret: true
+      # rotate_local_password: true
 ```
 
-Sonarr v5 uses the same block. Supported fields are `authenticationMethod`,
-`authenticationRequired`, `allowedHosts`, `oidcAuthority`, `oidcClientId`,
-`oidcClientSecret`, `oidcUserIdentifier`, `oidcScopes`, `enableSsl`, `sslCertPath`
-and `sslKeyPath`. Certificate paths are on the *arr server. The server validates
-authentication settings and certificates; some changes require a manual restart.
-Configarr does not change API keys or restart the server.
+Certificate paths are on the *arr server. The server validates authentication settings
+and certificates; some changes require a manual restart. Configarr does not change API
+keys or restart the server.
 
-The server masks an existing OIDC secret, so Configarr cannot compare it with your
-configured value. It sets a secret when the server has none and otherwise preserves
-the existing secret. Set `update_oidc_client_secret: true` to rotate it, then remove
-the flag: while it remains enabled Configarr submits the secret on every run. Secrets
-are redacted from the diff report. `DRY_RUN` reports changes without writing them.
+The server masks existing secrets, so Configarr cannot compare them with your configured
+values. Instead it tests the declared secret against the running configuration:
+
+- `local_password` is tried with the declared `local_username` (or the live username) by
+  posting to the app's `/login` endpoint. An auth cookie means the app already accepts the
+  password, so it is left untouched; a rejected login updates it.
+- `oidcClientSecret` is tried at the token endpoint from `oidcAuthority`'s discovery document,
+  using `oidcClientId`. A rejected client secret (`invalid_client`) updates it; a refused grant
+  (`unauthorized_client`, `invalid_grant`) means the client authenticated and is left alone.
+
+A probe makes at most one attempt and never logs the credentials or the response body. When the
+app or identity provider cannot be reached, Configarr falls back to the stored value: a secret
+is written when the server reports none and otherwise preserved. Set `test_secrets: false` to
+skip the probes entirely.
+
+Rotation flags still express intent: set `rotate_local_password: true` or
+`update_oidc_client_secret: true` to write a secret even when the declared value already works
+(for example to bootstrap a secret the API never returns). Remove the flag afterwards; while it
+remains enabled Configarr submits the secret on every run. `passwordConfirmation` is filled
+from `local_password` internally. Secrets are redacted from the diff report. `DRY_RUN` reports
+changes without writing them.
+
+Chaptarr additionally exposes `authenticationMethod: oidc` and the OIDC fields
+`oidc_allowed_emails`, `oidc_allowed_email_domains`, `oidc_require_email_verified` and
+`oidc_allow_any_verified_user`. They are applied when the instance returns them; vanilla
+Readarr rejects a block that declares them, and the other apps reject `oidc` with an error
+naming the app.
 
 Whisparr v3 supports the following separate allow-list in `host_config`, in addition to
 the backup policy:
@@ -1607,7 +1680,11 @@ whisparr:
       backup_interval: 7
 ```
 
-Omitted fields retain their server values. Whisparr rejects authentication, credential, network and other host settings in this block. Configarr reads back the settings after an update and reports an error if the server did not save them. The server must expose the requested fields and accept its current General settings when validating the update.
+Omitted fields retain their server values. Whisparr exposes these two toggles in addition to
+the shared host settings; the same shared `log_level`, credentials, backup, authentication
+and TLS keys are applied when Whisparr returns them. Configarr reads back the settings after
+an update and reports an error if the server did not save them. The server must expose the
+requested fields and accept its current General settings when validating the update.
 
 ## Experimental supported fields
 

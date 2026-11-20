@@ -1,5 +1,6 @@
 import type { ReadarrClient } from "../clients/readarr-client";
 import { ChaptarrDownloadClientSync } from "../downloadClients/downloadClientChaptarr";
+import { ChaptarrHostConfigSync } from "../hostConfig/hostConfigSync";
 import { ChaptarrMediaManagementSync } from "../mediaManagement/mediaManagementChaptarr";
 import { ChaptarrMetadataProfileSync } from "../metadataProfiles/metadataProfileChaptarr";
 import { QualityProfileChaptarrSync } from "../qualityProfiles/qualityProfileChaptarr";
@@ -31,5 +32,9 @@ export class ChaptarrSyncer extends ReadarrSyncer {
 
   protected override createMetadataProfileSync(client: ReadarrClient) {
     return new ChaptarrMetadataProfileSync(client);
+  }
+
+  protected override createHostConfigSync(client: ReadarrClient, baseUrl: string) {
+    return new ChaptarrHostConfigSync(client, this.arrLabel, baseUrl);
   }
 }

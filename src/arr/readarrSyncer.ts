@@ -1,10 +1,10 @@
-import { DownloadProtocol, type HostConfigResource } from "../__generated__/readarr/data-contracts";
+import { DownloadProtocol } from "../__generated__/readarr/data-contracts";
 import { getClient } from "../clients/client";
 import type { ReadarrClient } from "../clients/readarr-client";
 import { StandardDelayProfileSync } from "../delayProfiles/delayProfileBase";
 import type { InstanceDiffReport } from "../diffReport/diffReport.types";
 import { ReadarrDownloadClientSync } from "../downloadClients/downloadClientReadarr";
-import { BackupHostConfigSync } from "../hostConfig/hostConfigSync";
+import { HostConfigSync } from "../hostConfig/hostConfigSync";
 import { MediaManagementSync } from "../mediaManagement/mediaManagement";
 import { ReadarrMetadataProfileSync } from "../metadataProfiles/metadataProfileReadarr";
 import { QualityDefinitionSync } from "../qualityDefinitions/qualityDefinition";
@@ -40,6 +40,10 @@ export class ReadarrSyncer {
     return new ReadarrMetadataProfileSync(client, this.arrType);
   }
 
+  protected createHostConfigSync(client: ReadarrClient, baseUrl: string) {
+    return new HostConfigSync(client, this.arrLabel, baseUrl);
+  }
+
   async run(globalConfig: InputConfigSchema, instance: InputConfigArrInstance, instanceName: string): Promise<InstanceDiffReport> {
     const client = getClient(this.arrType);
     const ctx = await runMediaSyncToQualityProfiles({
@@ -57,7 +61,7 @@ export class ReadarrSyncer {
         root: this.createRootFolderSync(client, instance.media_type),
         downloadClients: this.createDownloadClientSync(client),
         indexerConfig: client,
-        hostConfig: new BackupHostConfigSync<HostConfigResource>(client, this.arrLabel),
+        hostConfig: this.createHostConfigSync(client, instance.base_url),
       },
       mediaSyncs: (mediaType) => ({
         mm: this.createMediaManagementSync(client, mediaType),
