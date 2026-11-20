@@ -10,6 +10,7 @@ import { syncNotifications, validateNotifications } from "../notifications/notif
 import { syncProwlarrProviders } from "../prowlarr/prowlarrSyncer";
 import { deleteUnmanagedInstanceTags, loadServerTags } from "../tags/tags";
 import { HostConfigSchema, InputConfigNotificationsSchema, type InputConfigProwlarrInstance } from "../types/config.types";
+import { syncUiConfig, uiConfigDiffToDiffEntries } from "../uiConfigs/uiConfigSyncer";
 import { ConfigValidationError } from "../validation";
 
 export class ProwlarrSyncer {
@@ -46,6 +47,10 @@ export class ProwlarrSyncer {
       hostConfig.validate(parsed.data, system.version);
       instance.host_config = parsed.data;
       diffCollector.add(await hostConfig.sync(parsed.data));
+    }
+
+    if (instance.ui_config !== undefined) {
+      diffCollector.add(uiConfigDiffToDiffEntries(await syncUiConfig(client, "PROWLARR", instance.ui_config)));
     }
 
     // ServerCache is media-manager shaped; Prowlarr only needs its tags and download-client schema slots.
