@@ -43,6 +43,7 @@ const STATUS_PATHS: Omit<Record<MediaArrType, string>, "SONARR"> = {
   RADARR: "/api/v3/system/status",
   WHISPARR: "/api/v3/system/status",
   READARR: "/api/v1/system/status",
+  CHAPTARR: "/api/v1/system/status",
   LIDARR: "/api/v1/system/status",
 };
 

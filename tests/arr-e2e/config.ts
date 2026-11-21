@@ -14,6 +14,7 @@ const DEFAULT_BASE_URL: Record<ArrType, string> = {
   RADARR: "http://127.0.0.1:17878",
   WHISPARR: "http://127.0.0.1:16969",
   READARR: "http://127.0.0.1:18787",
+  CHAPTARR: "http://127.0.0.1:18788",
   LIDARR: "http://127.0.0.1:18686",
   PROWLARR: "http://127.0.0.1:19696",
 };

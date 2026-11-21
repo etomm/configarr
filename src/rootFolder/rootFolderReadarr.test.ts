@@ -4,7 +4,8 @@ import { MonitorTypes, NewItemMonitorTypes } from "../__generated__/readarr/data
 import { ServerCache } from "../cache";
 import { getEnvs } from "../env";
 import type { InputConfigRootFolderReadarr } from "../types/config.types";
-import { type ReadarrRootFolderApi, ReadarrRootFolderSync } from "./rootFolderReadarr";
+import { type ChaptarrRootFolderApi, ChaptarrRootFolderSync } from "./rootFolderChaptarr";
+import { ReadarrRootFolderSync } from "./rootFolderReadarr";
 
 vi.mock("../env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../env")>();
@@ -18,7 +19,7 @@ const setDryRun = (dryRun: boolean) =>
   vi.mocked(getEnvs).mockReturnValue({ DRY_RUN: dryRun, LOG_LEVEL: "silent", CONFIGARR_VERSION: "test" } as never);
 
 describe("ReadarrRootFolderSync", () => {
-  const mockApi: Mocked<ReadarrRootFolderApi> = {
+  const mockApi: Mocked<ChaptarrRootFolderApi> = {
     getRootfolders: vi.fn(),
     addRootFolder: vi.fn(),
     updateRootFolder: vi.fn(),
@@ -518,6 +519,81 @@ describe("ReadarrRootFolderSync", () => {
       expect(result.removed).toBe(0);
       expect(result.diffEntries).toHaveLength(1);
       expect(result.diffEntries[0]).toMatchObject({ resourceType: "RootFolder", name: "/books", action: "update" });
+    });
+  });
+
+  describe("Chaptarr media-typed folders", () => {
+    const config: InputConfigRootFolderReadarr = {
+      path: "/books",
+      name: "Books",
+      metadata_profile: "Standard",
+      quality_profile: "eBook",
+    };
+
+    it("adds folderType and the ebook profile pair for media_type ebook", async () => {
+      const result = await new ChaptarrRootFolderSync(mockApi, "ebook").resolveRootFolderConfig(config, serverCache);
+      expect(result).toMatchObject({
+        folderType: 2,
+        ebookQualityProfileId: 1,
+        ebookMetadataProfileId: 10,
+      });
+      expect(result.audiobookQualityProfileId).toBeUndefined();
+    });
+
+    it("adds folderType and the audiobook profile pair for media_type audiobook", async () => {
+      const result = await new ChaptarrRootFolderSync(mockApi, "audiobook").resolveRootFolderConfig(
+        { ...config, quality_profile: "Audiobook" },
+        serverCache,
+      );
+      expect(result).toMatchObject({
+        folderType: 1,
+        audiobookQualityProfileId: 2,
+        audiobookMetadataProfileId: 10,
+      });
+      expect(result.ebookQualityProfileId).toBeUndefined();
+    });
+
+    it("resolves both profile pairs for a mixed folder", async () => {
+      const result = await new ChaptarrRootFolderSync(mockApi, "mixed").resolveRootFolderConfig(
+        {
+          ...config,
+          ebook_quality_profile: "eBook",
+          audiobook_quality_profile: "Audiobook",
+          audiobook_metadata_profile: "None",
+        },
+        serverCache,
+      );
+      expect(result).toMatchObject({
+        folderType: 0,
+        ebookQualityProfileId: 1,
+        ebookMetadataProfileId: 10,
+        audiobookQualityProfileId: 2,
+        audiobookMetadataProfileId: 20,
+      });
+    });
+
+    it("reports no change when a typed folder round-trips", async () => {
+      mockApi.getRootfolders.mockResolvedValue([
+        {
+          path: "/books",
+          id: 1,
+          name: "Books",
+          defaultMetadataProfileId: 10,
+          defaultQualityProfileId: 1,
+          defaultTags: [],
+          folderType: 2,
+          ebookQualityProfileId: 1,
+          ebookMetadataProfileId: 10,
+        },
+      ]);
+      const result = await new ChaptarrRootFolderSync(mockApi, "ebook").calculateDiff([config], serverCache);
+      expect(result).toBeNull();
+    });
+
+    it("does not send typed fields for vanilla Readarr", async () => {
+      const result = await new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig(config, serverCache);
+      expect(result).not.toHaveProperty("folderType");
+      expect(result).not.toHaveProperty("ebookQualityProfileId");
     });
   });
 });

@@ -2731,4 +2731,20 @@ describe("InputConfigSchemaSchema (regression)", () => {
   ])("host_config rejects $label", ({ config }) => {
     expect(() => HostConfigSchema.parse(config)).toThrow();
   });
+
+  test("accepts a chaptarr instance and enable flag", () => {
+    const parsed = InputConfigSchemaSchema.parse({
+      chaptarrEnabled: true,
+      chaptarr: { books: { base_url: "http://chaptarr", api_key: "key", media_type: "ebook" } },
+    });
+    expect(parsed.chaptarrEnabled).toBe(true);
+    expect(parsed.chaptarr?.books?.media_type).toBe("ebook");
+  });
+
+  test("readarr media_type accepts ebook, audiobook and mixed", () => {
+    for (const media_type of ["ebook", "audiobook", "mixed"] as const) {
+      expect(InputConfigArrInstanceSchema.parse({ base_url: "http://readarr", api_key: "key", media_type }).media_type).toBe(media_type);
+    }
+    expect(() => InputConfigArrInstanceSchema.parse({ base_url: "http://readarr", api_key: "key", media_type: "paperback" })).toThrow();
+  });
 });

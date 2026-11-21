@@ -126,6 +126,14 @@ type MediaArrResources = {
     releaseProfile: ReadarrReleaseProfileResource;
     downloadClient: ReadarrDownloadClientResource;
   };
+  CHAPTARR: {
+    qualityDefinition: ReadarrQualityDefinitionResource;
+    naming: ReadarrNamingConfigResource;
+    mediaManagement: ReadarrMediaManagementConfigResource;
+    qualityProfile: ReadarrQualityProfileResource;
+    releaseProfile: ReadarrReleaseProfileResource;
+    downloadClient: ReadarrDownloadClientResource;
+  };
   SONARR: {
     qualityDefinition: SonarrQualityDefinitionResource;
     naming: SonarrNamingConfigResource;
@@ -238,6 +246,9 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
     config.host_config = parsed.data;
     if (!syncs.hostConfig) throw new ConfigValidationError("host_config requires Radarr v7 or Sonarr v5");
     syncs.hostConfig.validate(config.host_config, system.version);
+  }
+  if (config.media_type !== undefined && arrType !== "CHAPTARR") {
+    throw new ConfigValidationError(`media_type is supported only by Chaptarr, not ${arrType}`);
   }
   if (config.import_lists && !syncs.importLists) throw new ConfigValidationError("import_lists is not supported for this application");
   if (config.import_lists) {

@@ -12,6 +12,18 @@ export default async function setup(project: TestProject): Promise<() => void> {
     await waitForSonarrApi(env.SONARR_BASE_URL, env.SONARR_API_KEY ?? "");
   } else if (env.RADARR_BASE_URL) {
     await waitForArrApi(env.RADARR_BASE_URL, env.RADARR_API_KEY ?? "", "/api/v3/system/status");
+  } else if (env.READARR_BASE_URL ?? process.env.READARR_BASE_URL) {
+    await waitForArrApi(
+      env.READARR_BASE_URL ?? process.env.READARR_BASE_URL ?? "",
+      env.READARR_API_KEY ?? process.env.READARR_API_KEY ?? "",
+      "/api/v1/system/status",
+    );
+  } else if (env.CHAPTARR_BASE_URL ?? process.env.CHAPTARR_BASE_URL) {
+    await waitForArrApi(
+      env.CHAPTARR_BASE_URL ?? process.env.CHAPTARR_BASE_URL ?? "",
+      env.CHAPTARR_API_KEY ?? process.env.CHAPTARR_API_KEY ?? "",
+      "/api/v1/system/status",
+    );
   } else {
     await waitForAllArrApis();
   }
