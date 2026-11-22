@@ -228,6 +228,14 @@ export const mergeConfigsAndTemplates = async (
     mergedTemplates.media_naming_api = { ...mergedTemplates.media_naming_api, ...instanceConfig.media_naming_api };
   }
 
+  if (instanceConfig.ebook_rename_books !== undefined) mergedTemplates.ebook_rename_books = instanceConfig.ebook_rename_books;
+  if (instanceConfig.ebook_replace_illegal_characters !== undefined) {
+    mergedTemplates.ebook_replace_illegal_characters = instanceConfig.ebook_replace_illegal_characters;
+  }
+  if (instanceConfig.ebook_colon_replacement_format !== undefined) {
+    mergedTemplates.ebook_colon_replacement_format = instanceConfig.ebook_colon_replacement_format;
+  }
+
   if (instanceConfig.quality_definition) {
     mergedTemplates.quality_definition = {
       ...mergedTemplates.quality_definition,

@@ -25,6 +25,11 @@ export type CustomFormatSpecification = {
 /** Minimal shape every *arr custom-format resource shares; used to keep Pattern B stages arr-generic. */
 export type CustomFormatRef = { id?: number; name?: string | null; specifications?: CustomFormatSpecification[] | null };
 
+/** Chaptarr: which media side a custom format belongs to. */
+export type CustomFormatAppliesTo = "both" | "ebook" | "audiobook";
+
+export const CustomFormatAppliesToSchema = z.enum(["both", "ebook", "audiobook"]);
+
 /** TRaSH/config mapping payload sent to *arr custom-format APIs. */
 export type CustomFormatRequest = {
   id?: number;
@@ -49,6 +54,8 @@ export type CustomFormatSpecificationImport = ReleaseTitleOrLanguageSpecificatio
 
 export type ImportCF = OmitTyped<CustomFormatRequest, "specifications"> & {
   specifications?: CustomFormatSpecificationImport[] | null;
+  /** Chaptarr config spelling; mapped to the `appliesTo` API field. */
+  applies_to?: CustomFormatAppliesTo;
 } & Required<Pick<CustomFormatRequest, "name">>;
 
 export type ConfigarrCFMeta = {
@@ -62,6 +69,9 @@ export const ConfigarrCFSchema: z.ZodType<ConfigarrCF> = z
   .any()
   .refine((v) => v != null && typeof v === "object" && typeof v.configarr_id === "string" && typeof v.name === "string", {
     message: "ConfigarrCF must be an object with 'configarr_id' and 'name' string fields",
+  })
+  .refine((v) => v?.applies_to == null || CustomFormatAppliesToSchema.safeParse(v.applies_to).success, {
+    message: "ConfigarrCF 'applies_to' must be one of both, ebook, audiobook",
   });
 
 type CFConfigGroup = {

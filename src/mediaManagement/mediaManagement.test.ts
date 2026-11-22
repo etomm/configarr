@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaManagementClient } from "../clients/capabilities";
+import type { MergedConfigInstance } from "../types/config.types";
 import { MediaManagementSync, mediamanagementDiffToDiffEntries, namingDiffToDiffEntries } from "./mediaManagement";
 
 type Naming = { id?: number; renameEpisodes?: boolean };
@@ -87,6 +88,25 @@ describe("MediaManagementSync.mapNaming", () => {
 
     await expect(sync.mapNaming({ series: "default" })).resolves.toBeUndefined();
     expect(api.getNaming).not.toHaveBeenCalled();
+  });
+});
+
+describe("MediaManagementSync.validateNamingConfig", () => {
+  it.each(["ebook_rename_books", "ebook_replace_illegal_characters", "ebook_colon_replacement_format"] as const)(
+    "rejects the Chaptarr-only field %s",
+    async (field) => {
+      const { sync } = createSync();
+      const config = { [field]: field === "ebook_colon_replacement_format" ? 3 : true } as unknown as MergedConfigInstance;
+
+      await expect(sync.validateNamingConfig(config)).rejects.toThrow(`${field} is supported only by Chaptarr`);
+    },
+  );
+
+  it("does not advertise Chaptarr-only field support on the base sync", () => {
+    const { sync } = createSync();
+    const base = sync as unknown as { supportsEbookNamingFields(): boolean };
+
+    expect(base.supportsEbookNamingFields()).toBe(false);
   });
 });
 

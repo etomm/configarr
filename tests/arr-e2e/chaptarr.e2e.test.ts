@@ -50,6 +50,21 @@ const qualityProfile = (min_format_score = 0) => ({
   qualities: [{ name: "EPUB" }],
 });
 
+const chaptarrQualityProfile = (min_format_score = 0) => ({
+  ...qualityProfile(min_format_score),
+});
+
+/** Audiobook profile for the conversion/preference flags, which only exist on that media side. */
+const chaptarrAudiobookQualityProfile = (min_format_score = 0) => ({
+  name: "e2e-qp",
+  upgrade: { allowed: true, until_quality: "M4B", until_score: 100 },
+  min_format_score,
+  qualities: [{ name: "M4B" }],
+  confirm_automatic_upgrades: true,
+  prefer_custom_formats_over_quality: true,
+  convert_to_quality: "M4B",
+});
+
 const qualityDefinition = (min: number) => ({ qualities: [{ quality: "EPUB", min, preferred: 50, max: 199.9 }] });
 
 const metadataProfile = (min_popularity = 0) => ({
@@ -57,6 +72,10 @@ const metadataProfile = (min_popularity = 0) => ({
   min_popularity,
   skip_missing_date: false,
   allowed_languages: ["eng"],
+  profile_type: "ebook",
+  skip_omnibus: true,
+  skip_missing_identifier_omnibus: true,
+  skip_missing_asin: true,
 });
 
 const delayDefault = (usenetDelay: number) => ({
@@ -101,13 +120,17 @@ describe("chaptarr (live)", () => {
   test("custom formats", async () => {
     const preexisting = nonE2eNames(await client.getCustomFormats());
     const withValue = (value: string) =>
-      chaptarrConfig({ custom_formats: cfAssignBlock() }, { customFormatDefinitions: [e2eCustomFormatDefinition(value)] });
+      chaptarrConfig(
+        { custom_formats: cfAssignBlock() },
+        { customFormatDefinitions: [{ ...e2eCustomFormatDefinition(value), applies_to: "ebook" }] },
+      );
 
     const created = await syncConfig(withValue("e2e-release"));
     assertPipelineSucceeded(created.result, ["CHAPTARR"]);
     const afterCreate = findNamed(await client.getCustomFormats(), "e2e-rt");
     expect(afterCreate).toBeTruthy();
     expect(cfReleaseTitleValue(afterCreate)).toBe("e2e-release");
+    expect((afterCreate as { appliesTo?: string } | undefined)?.appliesTo).toBe("ebook");
     const snap = stripVolatile(afterCreate);
 
     const second = await syncConfig(withValue("e2e-release"), created.workspace);
@@ -135,8 +158,9 @@ describe("chaptarr (live)", () => {
     const withScore = (min_format_score: number) =>
       chaptarrConfig(
         {
+          media_type: "audiobook",
           custom_formats: [{ trash_ids: ["e2e-rt"], assign_scores_to: [{ name: "e2e-qp", score: 10 }] }],
-          quality_profiles: [qualityProfile(min_format_score)],
+          quality_profiles: [chaptarrAudiobookQualityProfile(min_format_score)],
         },
         { customFormatDefinitions: [e2eCustomFormatDefinition()] },
       );
@@ -146,7 +170,14 @@ describe("chaptarr (live)", () => {
     const afterCreate = findNamed(await client.getQualityProfiles(), "e2e-qp");
     expect(afterCreate).toBeTruthy();
     expect(afterCreate?.minFormatScore ?? 0).toBe(0);
-    expect((afterCreate as { profileType?: string })?.profileType).toBe("ebook");
+    expect((afterCreate as { profileType?: string })?.profileType).toBe("audiobook");
+    const m4bId = (await client.getQualityDefinitions()).find((definition) => definition.quality?.name === "M4B")?.quality?.id;
+    expect(m4bId).toBeDefined();
+    expect(afterCreate as unknown as { confirmAutomaticUpgrades?: boolean }).toMatchObject({
+      confirmAutomaticUpgrades: true,
+      preferCustomFormatsOverQuality: true,
+      convertToQualityId: m4bId,
+    });
     const snap = stripVolatile(afterCreate);
 
     const second = await syncConfig(withScore(0), created.workspace);
@@ -275,6 +306,9 @@ describe("chaptarr (live)", () => {
         standardBookFormat: "{Book Title}/{Book Title}{ (PartNumber:smart)}",
         authorFolderFormat: "{Author NameFirstLast}",
       },
+      ebook_rename_books: true,
+      ebook_replace_illegal_characters: true,
+      ebook_colon_replacement_format: 3,
     });
     const first = await syncConfig(config);
     assertPipelineSucceeded(first.result, ["CHAPTARR"]);
@@ -282,6 +316,9 @@ describe("chaptarr (live)", () => {
     const naming = (await client.getNaming()) as Record<string, unknown>;
     expect(naming.ebookStandardBookFormat).toBe("{Book Title}/{Book Title}{ (PartNumber:smart)}");
     expect(naming.ebookAuthorFolderFormat).toBe("{Author NameFirstLast}");
+    expect(naming.ebookRenameBooks).toBe(true);
+    expect(naming.ebookReplaceIllegalCharacters).toBe(true);
+    expect(naming.ebookColonReplacementFormat).toBe(3);
 
     const second = await syncConfig(config, first.workspace);
     assertPipelineSucceeded(second.result, ["CHAPTARR"]);
@@ -437,7 +474,14 @@ describe("chaptarr (live)", () => {
 
     const created = await syncConfig(chaptarrConfig({ metadata_profiles: [metadataProfile()] }));
     assertPipelineSucceeded(created.result, ["CHAPTARR"]);
-    expect(findNamed(await client.getMetadataProfiles(), "e2e-meta")).toBeTruthy();
+    const afterCreate = findNamed(await client.getMetadataProfiles(), "e2e-meta");
+    expect(afterCreate).toBeTruthy();
+    expect(afterCreate as unknown as { profileType?: number }).toMatchObject({
+      profileType: 2,
+      skipOmnibus: true,
+      skipMissingIdentifierOmnibus: true,
+      skipMissingAsin: true,
+    });
 
     const second = await syncConfig(chaptarrConfig({ metadata_profiles: [metadataProfile()] }), created.workspace);
     assertPipelineSucceeded(second.result, ["CHAPTARR"]);

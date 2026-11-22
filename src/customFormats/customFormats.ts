@@ -15,6 +15,12 @@ export const deleteCustomFormat = async <CF extends CustomFormatRef>(client: Cus
   logger.info(`Deleted CF: '${customFormat.name}'`);
 };
 
+/** Chaptarr requires a media side on every custom format; an omitted `applies_to` means both. */
+export const withChaptarrCustomFormatDefaults = (request: CustomFormatRequest): CustomFormatRequest => ({
+  ...request,
+  appliesTo: request.appliesTo ?? "both",
+});
+
 export const loadServerCustomFormats = async <CF extends CustomFormatRef>(
   client: CustomFormatsClient<CF>,
 ): Promise<CF[] | CustomFormatRequest[]> => {
@@ -28,6 +34,7 @@ export const manageCf = async <CF extends CustomFormatRef>(
   client: CustomFormatsClient<CF>,
   cfProcessing: CFProcessing,
   serverCfs: Map<string, CustomFormatRef>,
+  mapRequest?: (request: CustomFormatRequest) => CustomFormatRequest,
 ) => {
   const { cfNameToCarrConfig } = cfProcessing;
 
@@ -38,7 +45,8 @@ export const manageCf = async <CF extends CustomFormatRef>(
   const diffEntries: DiffEntry[] = [];
 
   const manageSingle = async (cfName: string, carrConfig: ConfigarrCF) => {
-    const requestConfig = mapImportCfToRequestCf(carrConfig);
+    const mappedRequest = mapImportCfToRequestCf(carrConfig);
+    const requestConfig = mapRequest ? mapRequest(mappedRequest) : mappedRequest;
     const existingCf = serverCfs.get(cfName);
 
     if (existingCf) {

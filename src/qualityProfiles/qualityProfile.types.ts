@@ -23,4 +23,9 @@ export type QualityProfileShared = {
   formatItems?: FormatItem[] | null;
   minUpgradeFormatScore?: number;
   language?: QualityProfileLanguage;
+  // Chaptarr-only server fields, applied by QualityProfileChaptarrSync.
+  profileType?: "ebook" | "audiobook";
+  confirmAutomaticUpgrades?: boolean;
+  preferCustomFormatsOverQuality?: boolean;
+  convertToQualityId?: number;
 };

@@ -51,6 +51,7 @@ import {
   loadCustomFormatDefinitions,
   loadServerCustomFormats,
   manageCf,
+  withChaptarrCustomFormatDefaults,
 } from "../customFormats/customFormats";
 import type { DelayProfileShared } from "../delayProfiles/delayProfile.types";
 import { type BaseDelayProfileSync, delayProfilesToDiffEntries } from "../delayProfiles/delayProfileBase";
@@ -258,6 +259,9 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
   if (config.media_type !== undefined && arrType !== "CHAPTARR") {
     throw new ConfigValidationError(`media_type is supported only by Chaptarr, not ${arrType}`);
   }
+  if (arrType !== "CHAPTARR" && config.customFormatDefinitions?.some((definition) => definition.applies_to !== undefined)) {
+    throw new ConfigValidationError("customFormatDefinitions[].applies_to is supported only by Chaptarr");
+  }
   if (config.import_lists && !syncs.importLists) throw new ConfigValidationError("import_lists is not supported for this application");
   if (config.import_lists) {
     const parsed = InputConfigImportListsSchema.safeParse(config.import_lists);
@@ -290,6 +294,7 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
   }
   await qpSync.validateConfig(config);
   await mmSync.validateConfig(config.media_management);
+  await mmSync.validateNamingConfig(config);
   await syncs.releaseProfiles.validateConfig(config.release_profiles ?? []);
   if (config.import_lists && syncs.importLists) await syncs.importLists.validateConfig(config.import_lists, config);
 
@@ -311,7 +316,12 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
     return p;
   }, new Map<string, CustomFormatRef>());
 
-  const cfUpdateResult = await manageCf(client, mergedCFs, serverCFMapping);
+  const cfUpdateResult = await manageCf(
+    client,
+    mergedCFs,
+    serverCFMapping,
+    arrType === "CHAPTARR" ? withChaptarrCustomFormatDefaults : undefined,
+  );
   collector.add(cfUpdateResult.diffEntries);
 
   if (cfUpdateResult.createCFs.length > 0 || cfUpdateResult.updatedCFs.length > 0) {
@@ -418,7 +428,7 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
   }
 
   const write = !getEnvs().DRY_RUN;
-  const namingDiff = await mmSync.persistNaming(config.media_naming_api, write);
+  const namingDiff = await mmSync.persistNaming(mmSync.resolveNamingConfig(config), write);
 
   if (namingDiff) {
     collector.add(namingDiffToDiffEntries(namingDiff));

@@ -58,6 +58,8 @@ const makeSyncs = (): MediaFeatureSyncs =>
     qd: { loadFromServer: vi.fn(async () => []) },
     mm: {
       validateConfig: vi.fn(async () => undefined),
+      validateNamingConfig: vi.fn(async () => undefined),
+      resolveNamingConfig: vi.fn(() => undefined),
       persistNaming: vi.fn(async () => undefined),
       persistMediamanagement: vi.fn(async () => undefined),
     },

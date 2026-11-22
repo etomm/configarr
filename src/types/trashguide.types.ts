@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { CFIDToConfigGroup, ImportCF } from "../customFormats/customFormat.types";
+import { CustomFormatAppliesToSchema } from "../customFormats/customFormat.types";
 import { type ArrType, ArrTypeConst } from "./common.types";
 
 // --- Schemas ---
@@ -65,6 +66,9 @@ export const TrashCFSchema: z.ZodType<TrashCF> = z
   .any()
   .refine((v) => v != null && typeof v === "object" && typeof v.trash_id === "string" && typeof v.name === "string", {
     message: "TrashCF must be an object with 'trash_id' and 'name' string fields",
+  })
+  .refine((v) => v?.applies_to == null || CustomFormatAppliesToSchema.safeParse(v.applies_to).success, {
+    message: "TrashCF 'applies_to' must be one of both, ebook, audiobook",
   });
 
 export const TrashCFSpFSchema = z.object({
