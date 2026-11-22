@@ -68,6 +68,7 @@ import { type MediaManagementSync, mediamanagementDiffToDiffEntries, namingDiffT
 import { prepareMetadata, syncMetadata } from "../metadata/metadataSync";
 import { syncNotifications, validateNotifications } from "../notifications/notifications";
 import { type QualityDefinitionSync, qualityDefinitionsToDiffEntries } from "../qualityDefinitions/qualityDefinition";
+import type { QualityDefinitionQuality } from "../qualityDefinitions/qualityDefinition.types";
 import { getUnmanagedQualityProfiles, qualityProfilesToDiffEntries } from "../qualityProfiles/qualityProfileBase";
 import type { BaseQualityProfileSync } from "../qualityProfiles/qualityProfileSyncBase";
 import type { BaseReleaseProfileSync } from "../releaseProfiles/releaseProfileBase";
@@ -195,7 +196,7 @@ export type MediaSyncContext<T extends MediaArrType = MediaArrType> = {
   serverCache: ServerCache;
   collector: DiffCollector;
   syncs: MediaFeatureSyncs<T>;
-  qualityDefinitionDefaults: TrashQualityDefinitionQuality[];
+  qualityDefinitionDefaults: QualityDefinitionQuality[];
 };
 
 export type MediaSyncToQualityProfilesArgs<T extends MediaArrType = MediaArrType> = {
@@ -224,7 +225,7 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
   const { arrType, instanceName, globalConfig, instanceConfig, client, syncs, trash, supportsProfileQualitySizes = false } = args;
   const qdSync = syncs.qd;
   const collector = new DiffCollector();
-  let qualityDefinitionDefaults: TrashQualityDefinitionQuality[] = [];
+  let qualityDefinitionDefaults: QualityDefinitionQuality[] = [];
 
   const system = await client.getSystemStatus();
   logger.info(`System status: ${JSON.stringify(system)}`);
@@ -375,7 +376,7 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
   collector.add((await syncInstanceTags(client, serverCache, config.tags)).diffEntries);
 
   if (config.quality_definition != null) {
-    const mergedQDs: TrashQualityDefinitionQuality[] = [];
+    const mergedQDs: QualityDefinitionQuality[] = [];
     const qualityDefinitionType = config.quality_definition.type;
 
     // TODO: maybe add id reference as usage

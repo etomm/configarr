@@ -227,7 +227,9 @@ sonarr:
         - quality: WEBDL-1080p
           min: 5
           preferred: 50
-          max: 199.9
+          max: unlimited # same as null; omit max to keep the server value
+        # On Sonarr v5 sizes are applied as profile defaults; set quality_sizes on a
+        # profile for per-profile control.
 
     root_folders:
       - /app
@@ -487,6 +489,9 @@ radarr:
     tags: ["v7-example"]
     quality_definition:
       type: movie
+      qualities:
+        - quality: BR-DISK
+          max: unlimited # same as null; omit it to keep the server value
     include:
       - template: radarr-quality-profile-hd-bluray-web
       - template: radarr-custom-formats-hd-bluray-web

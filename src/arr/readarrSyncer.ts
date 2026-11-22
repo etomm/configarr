@@ -53,7 +53,7 @@ export class ReadarrSyncer {
       instanceConfig: instance,
       client,
       syncs: {
-        qd: new QualityDefinitionSync(client),
+        qd: new QualityDefinitionSync(client, { arrLabel: this.arrLabel }),
         mm: this.createMediaManagementSync(client, instance.media_type),
         qp: this.createQualityProfileSync(client, instance.media_type),
         delay: new StandardDelayProfileSync(client, DownloadProtocol),

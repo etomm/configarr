@@ -428,6 +428,10 @@ sonarr:
           min: 17.1
           preferred: 500
           max: 1000
+        - quality: "BR-DISK"
+          min: 187.4
+          preferred: 350
+          max: unlimited # same as max: null: no upper limit
 
 # Or in a template file:
 quality_definition:
@@ -440,11 +444,23 @@ quality_definition:
 
 **Notes:**
 
+- `max` and `preferred` accept the keyword `unlimited`, which is the same as `null` and the
+  *arr "Unlimited" slider position: it explicitly clears the stored value. `min: unlimited` is
+  rejected because a minimum has no unlimited meaning; use a number or `null`.
+- A field you omit stays unmanaged: Configarr keeps the value already on the server instead of
+  clearing it. This is distinct from `max: unlimited` / `max: null`, which writes `null`.
+- `0` is a real size value, not "unset". A `preferred: 0` is written once and is then stable.
+  For `max`, the apps treat `null` and `0` as the same "unlimited" state, so Configarr treats
+  them as equal when comparing and does not churn.
+- `preferred` is only available on apps that expose a preferred size: Radarr, Sonarr v4,
+  Lidarr and Whisparr. Readarr and Chaptarr have no preferred size, so Configarr rejects
+  the field with an error that names the app instead of silently dropping it.
 - `preferred_ratio` (0.0 – 1.0) interpolates between `min` and `max` to compute `preferred`.
   It applies to `type`-based and `include`-based loading; it has no effect on manual `qualities`.
+  An entry that declares `unlimited`/`null` cannot be combined with `preferred_ratio`; Configarr
+  rejects the combination instead of interpolating from a missing bound.
 - `preferred_ratio` on `include` items applies only to that specific include.
 - Merge order: TRaSH/Recyclarr templates → local templates → config file (`quality_definition.qualities` last).
-- Only supported for Radarr and Sonarr. Not available for Lidarr, Readarr, Chaptarr, Whisparr.
 - Available since `v1.9.0`. Include-based QD detection available since `v1.x.0` (TBD).
 
 ## Media Naming
@@ -605,6 +621,12 @@ omitted fields inherit the global default, or keep Sonarr's current value when n
 form configures that field. `quality_sizes` requires Sonarr v5; Configarr reports an
 error before applying changes if it is used with Sonarr v4.
 
+Because the v5 `/qualitydefinition` resource has no size fields, a QD size config does
+not update that resource directly; Configarr warns ("ignored on Sonarr v5") and applies
+the values as profile defaults through `quality_sizes`. Use `quality_sizes` on the profile
+when you need per-profile control. `quality_sizes` accepts `unlimited`/`null` as well:
+`max: unlimited` clears the upper limit, while an omitted field keeps the server value.
+
 ```yml
 sonarr:
   instance1:
@@ -621,6 +643,7 @@ sonarr:
           - quality: WEBDL-1080p
             min: 0
             preferred: 75
+            max: unlimited # no upper limit; same as max: null
 ```
 
 Quality selectors accept the quality name or display title shown in Sonarr. Only the

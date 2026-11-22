@@ -3,9 +3,8 @@ import type { QualityProfilesClient } from "../clients/capabilities";
 import type { SonarrClient } from "../clients/sonarr-client";
 import type { SonarrProfileQualitySize } from "../clients/sonarr-resource-mapper";
 import type { DiffEntry, FieldChange } from "../diffReport/diffReport.types";
-import type { QualityDefinitionShared } from "../qualityDefinitions/qualityDefinition.types";
+import type { QualityDefinitionQuality, QualityDefinitionShared } from "../qualityDefinitions/qualityDefinition.types";
 import type { ConfigQualityProfile, InputConfigQualitySize } from "../types/config.types";
-import type { TrashQualityDefinitionQuality } from "../types/trashguide.types";
 import { ConfigValidationError } from "../validation";
 import type { QualityProfileLanguage, QualityProfileShared } from "./qualityProfile.types";
 import { attachMinUpgradeOnCreate, diffMinUpgradeOnUpdate, warnUnsupportedQualityProfileLanguage } from "./qualityProfileBase";
@@ -70,7 +69,7 @@ export class QualityProfileSonarrSync extends BaseQualityProfileSync<QualityProf
     profiles: ConfigQualityProfile[],
     definitions: QualityDefinitionShared[],
     write: boolean,
-    globalDefaults: TrashQualityDefinitionQuality[] = [],
+    globalDefaults: QualityDefinitionQuality[] = [],
   ): Promise<DiffEntry[]> {
     const profilesWithOverrides = new Map(
       profiles.filter((profile) => profile.quality_sizes?.length).map((profile) => [profile.name, profile]),
@@ -90,6 +89,28 @@ export class QualityProfileSonarrSync extends BaseQualityProfileSync<QualityProf
       ["preferred", "preferredSize"],
       ["max", "maxSize"],
     ] as const;
+    // `undefined` inherits the global default; `null`/0 is an explicit value and must be
+    // written, so `??` is wrong here.
+    const resolveDesired = (
+      field: "min" | "preferred" | "max",
+      apiField: "minSize" | "preferredSize" | "maxSize",
+      explicit: InputConfigQualitySize | undefined,
+      defaults: { minSize?: number | null; preferredSize?: number | null; maxSize?: number | null } | undefined,
+    ): number | null | undefined => (explicit?.[field] !== undefined ? explicit[field] : defaults?.[apiField]);
+    const desiredMatches = (
+      apiField: "minSize" | "preferredSize" | "maxSize",
+      current: number | null | undefined,
+      desired: number | null | undefined,
+    ): boolean => {
+      if (desired === undefined) {
+        return true;
+      }
+      // Server null and 0 both mean "unlimited" for max; keep that idempotent.
+      if (apiField === "maxSize" && (desired === null || desired === 0)) {
+        return current == null || current === 0;
+      }
+      return (current ?? null) === desired;
+    };
     const configuredSizes = new Map<string, Map<string, InputConfigQualitySize>>();
     for (const profile of profilesWithOverrides.values()) {
       const sizes = new Map<string, InputConfigQualitySize>();
@@ -147,7 +168,7 @@ export class QualityProfileSonarrSync extends BaseQualityProfileSync<QualityProf
           const defaults = defaultsByQuality.get(qualityName);
           const override: SonarrProfileQualitySize = { quality: qualityName };
           for (const [configField, apiField] of sizeFields) {
-            const desired = size?.[configField] ?? defaults?.[apiField];
+            const desired = resolveDesired(configField, apiField, size, defaults);
             if (desired !== undefined) {
               override[apiField] = desired;
               fieldChanges.push({ field: `quality_sizes.${qualityName}.${configField}`, from: undefined, to: desired });
@@ -176,12 +197,12 @@ export class QualityProfileSonarrSync extends BaseQualityProfileSync<QualityProf
 
           const override: SonarrProfileQualitySize = { quality: qualityName };
           for (const [configField, apiField] of sizeFields) {
-            const desired = explicit?.[configField] ?? defaults?.[apiField];
+            const desired = resolveDesired(configField, apiField, explicit, defaults);
             if (desired === undefined) {
               continue;
             }
             override[apiField] = desired;
-            if (current[apiField] !== desired) {
+            if (!desiredMatches(apiField, current[apiField], desired)) {
               fieldChanges.push({
                 field: `quality_sizes.${qualityName}.${configField}`,
                 from: current[apiField],

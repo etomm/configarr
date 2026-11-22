@@ -4,6 +4,7 @@ import type { QualityProfileResource } from "../__generated__/sonarr/data-contra
 import { SonarrClient } from "../clients/sonarr-client";
 import type { QualityDefinitionShared } from "../qualityDefinitions/qualityDefinition.types";
 import type { ConfigQualityProfile, MergedConfigInstance } from "../types/config.types";
+import { InputConfigArrInstanceSchema } from "../types/config.types";
 import { cloneWithJSON, loadJsonFile } from "../util";
 import type { QualityProfileShared } from "./qualityProfile.types";
 import { QualityProfileSonarrSync } from "./qualityProfileSonarr";
@@ -271,6 +272,65 @@ describe("QualityProfileSonarrSync", () => {
           ],
         },
       ]);
+    });
+    test("accepts unlimited in quality_sizes and writes null without inheriting a numeric default", async () => {
+      const parsed = InputConfigArrInstanceSchema.parse({
+        base_url: "http://sonarr:8989",
+        api_key: "key",
+        quality_profiles: [
+          {
+            name: "WEB-1080p",
+            quality_sizes: [{ quality: "WEBDL-1080p", preferred: null, max: "unlimited" }],
+          },
+        ],
+      });
+      const sizes = parsed.quality_profiles?.[0]?.quality_sizes;
+      expect(sizes).toEqual([{ quality: "WEBDL-1080p", preferred: null, max: null }]);
+
+      const client = new SonarrClient("http://sonarr.test", "api-key");
+      vi.spyOn(client, "supportsProfileQualitySizes").mockResolvedValue(true);
+      vi.spyOn(client, "getProfileQualitySizes").mockResolvedValue([
+        { id: 1, name: "WEB-1080p", items: [{ quality: "WEBDL-1080p", minSize: 0, preferredSize: 95, maxSize: 200 }] },
+      ]);
+      const update = vi.spyOn(client, "updateProfileQualitySizes").mockResolvedValue(undefined);
+
+      const changes = await new QualityProfileSonarrSync(client).syncQualitySizes(
+        [{ ...config, quality_sizes: sizes }],
+        definitions,
+        true,
+        [{ quality: "WEBDL-1080p", min: 0, preferred: 50, max: 200 }],
+      );
+
+      expect(changes).toEqual([
+        {
+          resourceType: "QualityProfile",
+          name: "WEB-1080p",
+          action: "update",
+          fieldChanges: [
+            { field: "quality_sizes.WEBDL-1080p.preferred", from: 95, to: null },
+            { field: "quality_sizes.WEBDL-1080p.max", from: 200, to: null },
+          ],
+        },
+      ]);
+      expect(update).toHaveBeenCalledWith("1", [{ quality: "WEBDL-1080p", minSize: 0, preferredSize: null, maxSize: null }]);
+    });
+
+    test("treats profile maxSize null and 0 as the same unlimited value", async () => {
+      const client = new SonarrClient("http://sonarr.test", "api-key");
+      vi.spyOn(client, "supportsProfileQualitySizes").mockResolvedValue(true);
+      vi.spyOn(client, "getProfileQualitySizes").mockResolvedValue([
+        { id: 1, name: "WEB-1080p", items: [{ quality: "WEBDL-1080p", minSize: 0, maxSize: 0 }] },
+      ]);
+      const update = vi.spyOn(client, "updateProfileQualitySizes").mockResolvedValue(undefined);
+
+      const changes = await new QualityProfileSonarrSync(client).syncQualitySizes(
+        [{ ...config, quality_sizes: [{ quality: "WEBDL-1080p", max: null }] }],
+        definitions,
+        true,
+      );
+
+      expect(changes).toEqual([]);
+      expect(update).not.toHaveBeenCalled();
     });
   });
 });

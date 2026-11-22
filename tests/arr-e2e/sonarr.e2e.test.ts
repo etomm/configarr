@@ -843,6 +843,37 @@ describe("sonarr (live)", () => {
     expect((await sizes("e2e-size-default"))?.find((item) => item.quality === "WEBDL-1080p")?.preferredSize).toBe(50);
   });
 
+  test("per-profile quality_sizes accept unlimited values", async () => {
+    if (!(await client.supportsProfileQualitySizes())) {
+      return;
+    }
+
+    const sizes = async (name: string) => (await client.getProfileQualitySizes()).find((item) => item.name === name)?.items;
+    const yaml = mediaConfig("SONARR", {
+      quality_profiles: [
+        {
+          ...qualityProfile(),
+          name: "e2e-size-unlimited",
+          quality_sizes: [{ quality: "WEBDL-1080p", min: 1, preferred: null, max: "unlimited" }],
+        },
+      ],
+    });
+
+    const created = await syncConfig(yaml);
+    assertPipelineSucceeded(created.result, ["SONARR"]);
+    await waitUntil(
+      async () => ((await sizes("e2e-size-unlimited"))?.find((item) => item.quality === "WEBDL-1080p")?.maxSize ?? null) === null,
+    );
+    const item = (await sizes("e2e-size-unlimited"))?.find((entry) => entry.quality === "WEBDL-1080p");
+    expect(item?.minSize).toBe(1);
+    expect(item?.preferredSize ?? null).toBeNull();
+    expect(item?.maxSize ?? null).toBeNull();
+
+    const second = await syncConfig(yaml, created.workspace);
+    assertPipelineSucceeded(second.result, ["SONARR"]);
+    assertDiffUpToDate(second.result, ["SONARR"]);
+  });
+
   test("quality profile groups keep their server ids across config reorders", async () => {
     const preexisting = nonE2eNames(await client.getQualityProfiles());
     const groups = [
@@ -910,6 +941,15 @@ describe("sonarr (live)", () => {
 
   test("quality definitions", async () => {
     const webdl = async () => (await client.getQualityDefinitions()).find((d) => d.quality?.name === "WEBDL-1080p");
+
+    if (await client.supportsProfileQualitySizes()) {
+      // Sonarr v5 has no sizes on /qualitydefinition; the sync warns and the profile
+      // sizes are covered by the per-profile test above.
+      const result = await syncConfig(mediaConfig("SONARR", { quality_definition: qualityDefinition(2) }));
+      assertPipelineSucceeded(result.result, ["SONARR"]);
+      expect(result.result.stdout).toContain("ignored on Sonarr v5");
+      return;
+    }
 
     const created = await syncConfig(mediaConfig("SONARR", { quality_definition: qualityDefinition(2) }));
     assertPipelineSucceeded(created.result, ["SONARR"]);
