@@ -32,7 +32,6 @@ import {
   nonE2eNames,
   preservedRootFolderObjects,
   restoreMediaBaseline,
-  seedHostConfigWrite,
   snapshotMediaBaseline,
   stripVolatile,
   syncConfig,
@@ -86,7 +85,6 @@ describe("chaptarr (live)", () => {
   beforeAll(async () => {
     await cleanupMediaE2e(client);
     await cleanupMetadataProfilesE2e(client);
-    await seedHostConfigWrite(client);
     baseline = await snapshotMediaBaseline(client);
   }, 180_000);
 
@@ -586,6 +584,34 @@ describe("chaptarr (live)", () => {
     const deleted = await syncConfig(yaml(false, false, false), created.workspace);
     assertPipelineSucceeded(deleted.result, ["CHAPTARR"]);
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
+  });
+
+  test("syncs general host settings and previews Chaptarr OIDC fields", async () => {
+    const original = await client.getHostConfig();
+    const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const originalVerified = (original as unknown as { oidcRequireEmailVerified?: boolean }).oidcRequireEmailVerified ?? false;
+    try {
+      const config = chaptarrConfig({ host_config: { log_level } });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["CHAPTARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.logLevel).toBe(log_level);
+
+      const rejected = await syncConfig(chaptarrConfig({ host_config: { analytics_enabled: false } }), first.workspace);
+      expect(rejected.result.exitCode).not.toBe(0);
+      expect(rejected.result.stdout + rejected.result.stderr).toContain("does not expose analytics_enabled");
+
+      const dry = await syncConfig(chaptarrConfig({ host_config: { oidc_require_email_verified: !originalVerified } }), first.workspace, {
+        dryRun: true,
+      });
+      assertPipelineSucceeded(dry.result, ["CHAPTARR"]);
+      expect(dry.result.stdout + dry.result.stderr).toContain("oidcRequireEmailVerified");
+      expect(((await client.getHostConfig()) as unknown as { oidcRequireEmailVerified?: boolean }).oidcRequireEmailVerified).toBe(
+        originalVerified,
+      );
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
   });
 
   test("syncs the backup policy and stays idempotent", async () => {

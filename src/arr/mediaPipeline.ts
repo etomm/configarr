@@ -153,7 +153,7 @@ type MediaArrResources = {
 };
 
 export type MediaFeatureSyncs<T extends MediaArrType = MediaArrType> = {
-  hostConfig?: { validate(config: HostConfig, version: string | undefined | null): void; sync(config: HostConfig): Promise<DiffEntry[]> };
+  hostConfig?: { validate(config: HostConfig): void; sync(config: HostConfig): Promise<DiffEntry[]> };
   importLists?: {
     validateConfig(config: NonNullable<MergedConfigInstance["import_lists"]>, instance: MergedConfigInstance): Promise<void>;
     sync(
@@ -252,8 +252,8 @@ export const runMediaSyncToQualityProfiles = async <T extends MediaArrType>(
     if (!parsed.success)
       throw new ConfigValidationError("Invalid host_config: " + parsed.error.issues.map((issue) => issue.message).join("; "));
     config.host_config = parsed.data;
-    if (!syncs.hostConfig) throw new ConfigValidationError("host_config requires Radarr v7 or Sonarr v5");
-    syncs.hostConfig.validate(config.host_config, system.version);
+    if (!syncs.hostConfig) throw new ConfigValidationError("host_config is not supported for this application");
+    syncs.hostConfig.validate(config.host_config);
   }
   if (config.media_type !== undefined && arrType !== "CHAPTARR") {
     throw new ConfigValidationError(`media_type is supported only by Chaptarr, not ${arrType}`);

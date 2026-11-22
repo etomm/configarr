@@ -200,9 +200,11 @@ sonarr:
     enabled: true
     base_url: http://sonarr-v5:8989
     api_key: !secret SONARR_V5_API_KEY
-    # (experimental) since v1.39.0. Optional Sonarr v5 General settings (paths are inside the Sonarr container).
-    # Backup settings also work on Sonarr v4; OIDC/TLS settings require v5.
+    # (experimental) since v1.39.0. Optional host settings (paths are inside the Sonarr container).
+    # Every declared field must be exposed by the instance.
     # host_config:
+    #   log_level: info
+    #   analytics_enabled: false
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -457,9 +459,13 @@ radarr:
   instance-v7:
     base_url: http://radarr-v7:7878
     api_key: !secret RADARR_V7_API_KEY
-    # (experimental) since v1.39.0. Optional Radarr v7 General settings; see the configuration docs for OIDC/TLS.
-    # Backup settings also work on Radarr v5/v6; OIDC/TLS settings require v7.
+    # (experimental) since v1.39.0. Optional host settings; see the configuration docs for OIDC/TLS.
+    # Every declared field must be exposed by the instance.
     # host_config:
+    #   log_level: info
+    #   analytics_enabled: false
+    #   local_username: admin
+    #   local_password: !secret RADARR_LOCAL_PASSWORD
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -485,10 +491,11 @@ whisparr:
     base_url: http://whisparr:6969 # instance URL
     api_key: !secret WHISPARR_API_KEY # Reference to API key in secrets.yml
 
-    # (experimental) since v1.39.0. Whisparr v3 General settings.
+    # (experimental) since v1.39.0. Whisparr v3 host settings.
     # host_config:
     #   whisparrAutoMatchOnDate: false
     #   whisparrCorruptFileDetection: true
+    #   log_level: info
     #   backup_interval: 7
     #   backup_retention: 28
 
@@ -567,8 +574,9 @@ readarr:
     base_url: http://readarr:8787 # instance URL
     api_key: !secret READARR_API_KEY # Reference to API key in secrets.yml
 
-    # (experimental) since v1.39.0. Backup policy (supported on every Readarr version).
+    # (experimental) since v1.39.0. Optional host settings.
     # host_config:
+    #   log_level: info
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -705,8 +713,9 @@ lidarr:
     base_url: http://lidarr:8686
     api_key: !secret LIDARR_API_KEY
 
-    # (experimental) since v1.39.0. Backup policy (supported on every Lidarr version).
+    # (experimental) since v1.39.0. Optional host settings.
     # host_config:
+    #   log_level: info
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -813,8 +822,9 @@ prowlarr:
     base_url: http://prowlarr:9696
     api_key: !secret PROWLARR_API_KEY
 
-    # (experimental) since v1.39.0. Backup policy.
+    # (experimental) since v1.39.0. Optional host settings.
     # host_config:
+    #   log_level: info
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28

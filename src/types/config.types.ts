@@ -551,6 +551,25 @@ export const HostConfigSchema = z
     backup_folder: z.string().min(1).optional(),
     backup_interval: z.number().int().min(1).optional(),
     backup_retention: z.number().int().min(1).optional(),
+    // General settings. Applied only when the target's host resource exposes them.
+    log_level: z.string().optional(),
+    analytics_enabled: z.boolean().optional(),
+    instance_name: z.string().optional(),
+    launch_browser: z.boolean().optional(),
+    certificate_validation: z.string().optional(),
+    update_automatically: z.boolean().optional(),
+    update_mechanism: z.string().optional(),
+    branch: z.string().optional(),
+    url_base: z.string().optional(),
+    // Local account kept as a fallback next to proxy authentication.
+    local_username: z.string().optional(),
+    local_password: z.string().optional(),
+    rotate_local_password: z.boolean().optional(),
+    // Chaptarr fork-only OIDC fields. Ignored on instances that do not expose them.
+    oidc_allowed_emails: z.string().optional(),
+    oidc_allowed_email_domains: z.string().optional(),
+    oidc_require_email_verified: z.boolean().optional(),
+    oidc_allow_any_verified_user: z.boolean().optional(),
   })
   .strict();
 

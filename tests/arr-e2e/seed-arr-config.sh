@@ -9,6 +9,7 @@
 set -eu
 
 service="${1:?usage: seed-arr-config.sh <compose-service-name>}"
+shift
 config=/config/config.xml
 required="localhost,127.0.0.1,${service}"
 
@@ -20,7 +21,7 @@ if [ ! -f "$config" ]; then
 </Config>
 EOF
   chown "${PUID:-1000}:${PGID:-1000}" "$config"
-  exec /init
+  exec "${ARR_INIT:-/init}" "$@"
 fi
 
 flattened=$(tr '\n' ' ' < "$config")
@@ -84,4 +85,4 @@ if [ "$merged" != "$current" ]; then
 fi
 
 chown "${PUID:-1000}:${PGID:-1000}" "$config"
-exec /init
+exec "${ARR_INIT:-/init}" "$@"

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Live Whisparr e2e: every configarr feature, against the Whisparr container only.
  *
  * One file per *arr, each with its own literal payloads - the YAML differs per app, and a
@@ -114,14 +114,15 @@ describe("whisparr (live)", () => {
       const expected = { ...original, whisparrCorruptFileDetection: desired.whisparrCorruptFileDetection };
       expect(await getHost()).toEqual(expected);
       const beforeUi = await client.getUiConfig();
-      const invalid = await syncConfig(
+      const rejected = await syncConfig(
         mediaConfig("WHISPARR", {
-          host_config: { authenticationMethod: "none" },
+          host_config: { oidc_allowed_emails: "reader@example.com" },
           ui_config: { firstDayOfWeek: beforeUi.firstDayOfWeek === 6 ? 5 : 6 },
         }),
         first.workspace,
       );
-      expect(invalid.result.exitCode).not.toBe(0);
+      expect(rejected.result.exitCode).not.toBe(0);
+      expect(rejected.result.stdout + rejected.result.stderr).toContain("does not expose oidc_allowed_emails");
       expect(await getHost()).toEqual(expected);
       expect(await client.getUiConfig()).toEqual(beforeUi);
     } finally {

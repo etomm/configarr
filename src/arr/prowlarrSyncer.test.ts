@@ -96,10 +96,11 @@ describe("ProwlarrSyncer", () => {
     );
   });
 
-  it("rejects authentication host_config before syncing providers", async () => {
-    await expect(new ProwlarrSyncer().run(instance({ host_config: { oidcScopes: "openid" } }), "e2e")).rejects.toThrow(
-      "Prowlarr host_config supports only",
+  it("rejects host settings the Prowlarr instance does not expose", async () => {
+    await expect(new ProwlarrSyncer().run(instance({ host_config: { oidcScopes: "openid", backup_interval: 1 } }), "e2e")).rejects.toThrow(
+      "does not expose oidcScopes",
     );
+    expect(prowlarrClient.updateHostConfig).not.toHaveBeenCalled();
     expect(syncProviders).not.toHaveBeenCalled();
   });
 

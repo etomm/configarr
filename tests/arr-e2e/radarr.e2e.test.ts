@@ -184,6 +184,25 @@ describe("radarr (live)", () => {
     }
   });
 
+  test("syncs general host settings and stays idempotent", async () => {
+    const original = await client.getHostConfig();
+    const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const analytics_enabled = !original.analyticsEnabled;
+    try {
+      const config = mediaConfig("RADARR", { host_config: { log_level, analytics_enabled } });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["RADARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.logLevel).toBe(log_level);
+      expect(updated.analyticsEnabled).toBe(analytics_enabled);
+      const second = await syncConfig(config, first.workspace);
+      assertPipelineSucceeded(second.result, ["RADARR"]);
+      assertDiffUpToDate(second.result, ["RADARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test.each([
     { label: "invalid enum", host_config: { authenticationMethod: "invalid" } },
     { label: "unsupported field", host_config: { apiKey: "not-managed" } },
@@ -206,14 +225,14 @@ describe("radarr (live)", () => {
     }
   });
 
-  test("rejects v7 host settings on older Radarr before applying other changes", async () => {
+  test("rejects host settings the Radarr version does not expose", async () => {
     const major = Number((await client.getSystemStatus()).version?.split(".")[0]);
     if (major >= 7) return;
     const before = await client.getUiConfig();
     const config = mediaConfig("RADARR", { host_config: { oidcScopes: "openid" }, ui_config: { firstDayOfWeek: 6 } });
     const run = await syncConfig(config);
     expect(run.result.exitCode).not.toBe(0);
-    expect(run.result.stdout + run.result.stderr).toContain("host_config requires Radarr v7 or Sonarr v5");
+    expect(run.result.stdout + run.result.stderr).toContain("does not expose oidcScopes");
     expect((await client.getUiConfig()).firstDayOfWeek).toBe(before.firstDayOfWeek);
   });
 

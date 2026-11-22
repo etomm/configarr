@@ -145,10 +145,14 @@ services:
       - CHAPTARR__AUTH__APIKEY=e2etestapikey0123456789abcdef012
       - CHAPTARR__AUTH__METHOD=External
       - CHAPTARR__AUTH__REQUIRED=DisabledForLocalAddresses
+      # Chaptarr's image entrypoint is /entrypoint.sh, not the LinuxServer /init.
+      - ARR_INIT=/entrypoint.sh
     volumes:
       - chaptarr-data:/config
+      - ./seed-arr-config.sh:/seed-arr-config.sh:ro
       - ./fixtures/media/e2e:/data/e2e
       - ./fixtures/media/e2e-b:/data/e2e-b
+    entrypoint: ["/bin/sh", "/seed-arr-config.sh", "chaptarr"]
     ports:
       - "18788:8789"
 

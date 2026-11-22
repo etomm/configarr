@@ -2743,6 +2743,25 @@ describe("InputConfigSchemaSchema (regression)", () => {
     expect(HostConfigSchema.parse({ backup_folder })).toEqual({ backup_folder });
   });
 
+  test("host_config accepts general settings and local credentials", () => {
+    const config = {
+      log_level: "info",
+      analytics_enabled: false,
+      instance_name: "media",
+      launch_browser: false,
+      certificate_validation: "enabled",
+      update_automatically: false,
+      update_mechanism: "docker",
+      branch: "main",
+      url_base: "/sonarr",
+      local_username: "admin",
+      local_password: "secret",
+      rotate_local_password: true,
+      oidc_allowed_email_domains: "example.com",
+    };
+    expect(HostConfigSchema.parse(config)).toEqual(config);
+  });
+
   test.each([
     { label: "zero interval", config: { backup_interval: 0 } },
     { label: "zero retention", config: { backup_retention: 0 } },

@@ -7,11 +7,8 @@ import { SonarrClient } from "../clients/sonarr-client";
 import { WhisparrClient } from "../clients/whisparr-client";
 import { initEnvs } from "../env";
 import { logger } from "../logger";
-import { RadarrHostConfigSync } from "./hostConfigRadarr";
-import { SonarrHostConfigSync } from "./hostConfigSonarr";
-import type { HostClient, HostConfig, HostResource } from "./hostConfigSync";
-import { BackupHostConfigSync, syncHostConfig } from "./hostConfigSync";
-import { WhisparrHostConfigSync } from "./hostConfigWhisparr";
+import type { HostConfig } from "./hostConfigSync";
+import { ChaptarrHostConfigSync, FederatedHostConfigSync, HostConfigSync } from "./hostConfigSync";
 
 type StoredHostSettings = Record<string, unknown>;
 
@@ -37,6 +34,8 @@ function stubHostApi(initial: StoredHostSettings, apiVersion?: "v3" | "v5") {
   return { requests, writes, stored: () => stored };
 }
 
+const backup = { backup_folder: "Backups", backup_interval: 7, backup_retention: 28 } satisfies HostConfig;
+
 describe("host settings synchronization", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -45,53 +44,59 @@ describe("host settings synchronization", () => {
     initEnvs();
   });
 
-  test("rejects settings for the wrong application and unsupported Whisparr versions", () => {
-    const radarr = new RadarrHostConfigSync(new RadarrClient("http://radarr.test", "key"));
-    const sonarr = new SonarrHostConfigSync(new SonarrClient("http://sonarr.test", "key"));
-    const whisparr = new WhisparrHostConfigSync(new WhisparrClient("http://whisparr.test", "key"));
-    expect(() => radarr.validate({ whisparrAutoMatchOnDate: true }, "7.0.0")).toThrow("Whisparr host settings");
-    expect(() => sonarr.validate({ whisparrCorruptFileDetection: true }, "5.0.0")).toThrow("Whisparr host settings");
-    expect(() => whisparr.validate({ whisparrAutoMatchOnDate: true }, "2.0.0")).toThrow("requires Whisparr v3");
-    expect(() => whisparr.validate({ authenticationMethod: "none" }, "3.0.0")).toThrow("Unsupported Whisparr host_config fields");
+  test("validates secret flags and well-known authentication values", () => {
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr");
+    expect(() => sync.validate({ oidcClientSecret: "********" })).toThrow("masked placeholder");
+    expect(() => sync.validate({ update_oidc_client_secret: true })).toThrow("requires oidcClientSecret");
+    expect(() => sync.validate({ local_password: "********" })).toThrow("masked placeholder");
+    expect(() => sync.validate({ rotate_local_password: true })).toThrow("requires local_password");
+    expect(() => sync.validate({ authenticationMethod: "magic" })).toThrow("Unsupported authenticationMethod");
+    expect(() => sync.validate({ authenticationRequired: "sometimes" })).toThrow("Unsupported authenticationRequired");
+    expect(() => sync.validate(backup)).not.toThrow();
   });
 
-  test("rejects a Whisparr host setting that the server does not expose", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ id: 1 })),
-    );
-    const sync = new WhisparrHostConfigSync(new WhisparrClient("http://whisparr.test", "key"));
-    await expect(sync.sync({ whisparrAutoMatchOnDate: false })).rejects.toThrow("does not expose host setting");
+  test("rejects fields outside the app's field group before reading the server", async () => {
+    const api = stubHostApi({ id: 1 });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    expect(() => sync.sync({ oidcScopes: "openid", log_level: "info" })).toThrow("Lidarr host configuration does not expose oidcScopes");
+    expect(api.requests).toHaveLength(0);
   });
 
-  test("checks Whisparr host settings were persisted", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ id: 1, whisparrAutoMatchOnDate: true, whisparrCorruptFileDetection: false })),
-    );
-    const client = new WhisparrClient("http://whisparr.test", "key");
-    await expect(
-      client.updateHostConfig("1", { id: 1, whisparrAutoMatchOnDate: false, whisparrCorruptFileDetection: false }),
-    ).rejects.toThrow("did not persist");
-  });
-
-  test("reports Whisparr field changes while preserving omitted values", async () => {
-    let stored = { id: 1, whisparrAutoMatchOnDate: true, whisparrCorruptFileDetection: false, logLevel: "info" };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (request: Request) => {
-        if (request.method === "PUT") stored = await request.json();
-        return Response.json(stored);
-      }),
-    );
-    const sync = new WhisparrHostConfigSync(new WhisparrClient("http://whisparr.test", "key"));
-    const diff = await sync.sync({ whisparrAutoMatchOnDate: false });
-    expect(diff[0]?.fieldChanges).toEqual([{ field: "whisparrAutoMatchOnDate", from: true, to: false }]);
-    expect(stored).toMatchObject({ whisparrAutoMatchOnDate: false, whisparrCorruptFileDetection: false, logLevel: "info" });
+  test("applies general settings while preserving authentication fields", async () => {
+    const api = stubHostApi({
+      id: 1,
+      authenticationMethod: "external",
+      authenticationRequired: "enabled",
+      allowedHosts: "localhost",
+      logLevel: "debug",
+      analyticsEnabled: true,
+      instanceName: "old",
+      urlBase: "/old",
+    });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    const diff = await sync.sync({ log_level: "info", analytics_enabled: false, instance_name: "media", url_base: "/new" });
+    expect(diff[0]?.fieldChanges).toEqual([
+      { field: "logLevel", from: "debug", to: "info" },
+      { field: "analyticsEnabled", from: true, to: false },
+      { field: "instanceName", from: "old", to: "media" },
+      { field: "urlBase", from: "/old", to: "/new" },
+    ]);
+    expect(api.stored()).toMatchObject({
+      authenticationMethod: "external",
+      authenticationRequired: "enabled",
+      allowedHosts: "localhost",
+      logLevel: "info",
+      analyticsEnabled: false,
+      instanceName: "media",
+      urlBase: "/new",
+    });
+    const second = await sync.sync({ log_level: "info", analytics_enabled: false, instance_name: "media", url_base: "/new" });
+    expect(second).toEqual([]);
+    expect(api.writes).toHaveLength(1);
   });
 
   test("sets an initially empty OIDC secret without disclosing it in the diff", async () => {
-    let stored = { id: 1, oidcClientSecret: "", oidcScopes: "openid", allowedHosts: "localhost" };
+    let stored: StoredHostSettings = { id: 1, oidcClientSecret: "", oidcScopes: "openid", allowedHosts: "localhost" };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (request: Request) => {
@@ -103,7 +108,7 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    const report = await syncHostConfig(client, { oidcClientSecret: "new-secret-value" });
+    const report = await new FederatedHostConfigSync(client, "Radarr").sync({ oidcClientSecret: "new-secret-value" });
     expect(stored.oidcClientSecret).toBe("new-secret-value");
     expect(stored.allowedHosts).toBe("localhost");
     expect(JSON.stringify(report)).not.toContain("new-secret-value");
@@ -124,12 +129,44 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    expect(await syncHostConfig(client, { oidcClientSecret: "rotate-to-this" })).toEqual([]);
+    const sync = new FederatedHostConfigSync(client, "Radarr");
+    expect(await sync.sync({ oidcClientSecret: "rotate-to-this" })).toEqual([]);
     expect(writes).toBe(0);
-    const report = await syncHostConfig(client, { oidcClientSecret: "rotate-to-this" }, true);
+    const report = await sync.sync({ oidcClientSecret: "rotate-to-this", update_oidc_client_secret: true });
     expect(writes).toBe(1);
     expect(submitted).toBe("rotate-to-this");
     expect(JSON.stringify(report)).not.toContain("rotate-to-this");
+  });
+
+  test("applies local credentials on the first run and stays quiet afterwards", async () => {
+    const api = stubHostApi({ id: 1, username: "old", password: null, logLevel: "info" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    const report = await sync.sync({ local_username: "admin", local_password: "generated-secret" });
+    expect(report[0]?.fieldChanges).toEqual([
+      { field: "username", from: "old", to: "admin" },
+      { field: "password", from: "********", to: "********" },
+    ]);
+    expect(JSON.stringify(report)).not.toContain("generated-secret");
+    expect(api.stored()).toMatchObject({
+      username: "admin",
+      password: "generated-secret",
+      passwordConfirmation: "generated-secret",
+      logLevel: "info",
+    });
+    const second = await sync.sync({ local_username: "admin", local_password: "generated-secret" });
+    expect(second).toEqual([]);
+    expect(api.writes).toHaveLength(1);
+  });
+
+  test("rewrites a masked local password only with the rotation flag", async () => {
+    const api = stubHostApi({ id: 1, username: "admin", password: "********" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    expect(await sync.sync({ local_password: "new-secret" })).toEqual([]);
+    expect(api.writes).toHaveLength(0);
+    const report = await sync.sync({ local_password: "new-secret", rotate_local_password: true });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "password", from: "********", to: "********" }]);
+    expect(api.writes).toHaveLength(1);
+    expect(JSON.stringify(report)).not.toContain("new-secret");
   });
 
   test("dry run reports a redacted secret change without writing", async () => {
@@ -144,18 +181,25 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    const report = await syncHostConfig(client, { oidcClientSecret: "dry-secret" });
+    const report = await new FederatedHostConfigSync(client, "Radarr").sync({ oidcClientSecret: "dry-secret" });
     expect(report).toHaveLength(1);
     expect(JSON.stringify(report)).not.toContain("dry-secret");
     expect(writes).toBe(0);
   });
 
   test("maps configured authentication and PEM settings while preserving other fields", async () => {
-    let stored = {
+    let stored: StoredHostSettings = {
       id: 1,
       authenticationMethod: "external",
       authenticationRequired: "enabled",
+      oidcAuthority: null,
+      oidcClientId: null,
+      oidcUserIdentifier: null,
+      oidcScopes: null,
       oidcClientSecret: "********",
+      enableSsl: false,
+      sslCertPath: null,
+      sslKeyPath: null,
       allowedHosts: "localhost",
     };
     vi.stubGlobal(
@@ -169,7 +213,7 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    await new RadarrHostConfigSync(client).sync({
+    await new FederatedHostConfigSync(client, "Radarr").sync({
       authenticationMethod: "oidc",
       authenticationRequired: "disabledForLocalhost",
       allowedHosts: "localhost,127.0.0.1",
@@ -209,10 +253,44 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    const report = await syncHostConfig(client, { oidcScopes: "openid profile", oidcClientSecret: "private-new-secret" });
+    const report = await new FederatedHostConfigSync(client, "Radarr").sync({
+      oidcScopes: "openid profile",
+      oidcClientSecret: "private-new-secret",
+    });
     expect(submitted.oidcClientSecret).toBe("********");
     expect(submitted.oidcScopes).toBe("openid profile");
     expect(JSON.stringify(report)).not.toContain("private-new-secret");
+  });
+
+  test("applies Chaptarr-only OIDC fields when the instance exposes them", async () => {
+    const api = stubHostApi({
+      id: 1,
+      oidcAllowedEmails: null,
+      oidcAllowedEmailDomains: null,
+      oidcRequireEmailVerified: false,
+      oidcAllowAnyVerifiedUser: false,
+    });
+    const sync = new ChaptarrHostConfigSync(new ReadarrClient("http://readarr.test", "key"), "Readarr");
+    const diff = await sync.sync({
+      oidc_allowed_emails: "reader@example.com",
+      oidc_allowed_email_domains: "example.com",
+      oidc_require_email_verified: true,
+    });
+    expect(diff[0]?.fieldChanges).toEqual([
+      { field: "oidcAllowedEmails", from: null, to: "reader@example.com" },
+      { field: "oidcAllowedEmailDomains", from: null, to: "example.com" },
+      { field: "oidcRequireEmailVerified", from: false, to: true },
+    ]);
+    expect(api.stored()).toMatchObject({ oidcAllowAnyVerifiedUser: false });
+  });
+
+  test("rejects Chaptarr-only OIDC fields on vanilla Readarr", async () => {
+    const api = stubHostApi({ id: 1 });
+    const sync = new ChaptarrHostConfigSync(new ReadarrClient("http://readarr.test", "key"), "Readarr");
+    await expect(sync.sync({ oidc_require_email_verified: true })).rejects.toThrow(
+      "Readarr host configuration does not expose oidc_require_email_verified",
+    );
+    expect(api.writes).toHaveLength(0);
   });
 
   test("uses Sonarr v5 General settings for authentication changes", async () => {
@@ -232,7 +310,7 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new SonarrClient("http://sonarr.test", "key");
-    await new SonarrHostConfigSync(client).sync({ authenticationRequired: "disabledForLocalhost" });
+    await new FederatedHostConfigSync(client, "Sonarr").sync({ authenticationRequired: "disabledForLocalhost" });
     expect(submitted.authenticationRequired).toBe("disabledForLocalhost");
     expect(submitted.oidcClientSecret).toBe("********");
     expect(requests).toEqual(["GET /api", "GET /api/v5/settings/general", "PUT /api/v5/settings/general/1"]);
@@ -248,7 +326,9 @@ describe("host settings synchronization", () => {
       }),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    await expect(new RadarrHostConfigSync(client).sync({ oidcClientSecret: "leaked-value" })).rejects.not.toThrow("leaked-value");
+    await expect(new FederatedHostConfigSync(client, "Radarr").sync({ oidcClientSecret: "leaked-value" })).rejects.not.toThrow(
+      "leaked-value",
+    );
     expect(JSON.stringify(log.mock.calls)).not.toContain("leaked-value");
   });
 
@@ -259,52 +339,49 @@ describe("host settings synchronization", () => {
       vi.fn(async () => Response.json([{ errorMessage: "server secret read-secret" }], { status: 500 })),
     );
     const client = new RadarrClient("http://radarr.test", "key");
-    await expect(new RadarrHostConfigSync(client).sync({ oidcScopes: "openid" })).rejects.not.toThrow("read-secret");
+    await expect(new FederatedHostConfigSync(client, "Radarr").sync({ oidcScopes: "openid" })).rejects.not.toThrow("read-secret");
     expect(JSON.stringify(log.mock.calls)).not.toContain("read-secret");
   });
 
-  test("accepts the backup policy on every app, including versions without the authentication API", () => {
-    const backup: HostConfig = { backup_folder: "Backups", backup_interval: 7, backup_retention: 28 };
+  test("accepts the backup policy on every app and any version", () => {
     const apps = [
-      { label: "Lidarr", create: () => new LidarrClient("http://lidarr.test", "key") },
-      { label: "Readarr", create: () => new ReadarrClient("http://readarr.test", "key") },
-      { label: "Prowlarr", create: () => new ProwlarrClient("http://prowlarr.test", "key") },
+      { label: "Lidarr", create: () => new LidarrClient("http://lidarr.test", "key"), Sync: HostConfigSync },
+      { label: "Readarr", create: () => new ReadarrClient("http://readarr.test", "key"), Sync: ChaptarrHostConfigSync },
+      { label: "Prowlarr", create: () => new ProwlarrClient("http://prowlarr.test", "key"), Sync: HostConfigSync },
     ];
     for (const app of apps) {
-      const sync = new BackupHostConfigSync<HostResource>(app.create(), app.label);
-      expect(() => sync.validate(backup, "0.1.0.0")).not.toThrow();
+      const sync = new app.Sync(app.create(), app.label);
+      expect(() => sync.validate(backup)).not.toThrow();
     }
-    expect(() => new RadarrHostConfigSync(new RadarrClient("http://radarr.test", "key")).validate(backup, "5.14.0")).not.toThrow();
-    expect(() => new SonarrHostConfigSync(new SonarrClient("http://sonarr.test", "key")).validate(backup, "4.0.14")).not.toThrow();
-    expect(() => new WhisparrHostConfigSync(new WhisparrClient("http://whisparr.test", "key")).validate(backup, "3.0.0")).not.toThrow();
-  });
-
-  test("rejects authentication settings on apps without an authentication host API", () => {
-    const lidarr = new BackupHostConfigSync<HostResource>(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
-    expect(() => lidarr.validate({ oidcScopes: "openid" }, "3.0.0")).toThrow("Lidarr host_config supports only");
-    expect(() => lidarr.validate({ authenticationMethod: "none", backup_interval: 7 }, "3.0.0")).toThrow(
-      "Lidarr host_config supports only",
-    );
-  });
-
-  test("keeps the authentication version gate for Radarr and Sonarr", () => {
-    const radarr = new RadarrHostConfigSync(new RadarrClient("http://radarr.test", "key"));
-    const sonarr = new SonarrHostConfigSync(new SonarrClient("http://sonarr.test", "key"));
-    expect(() => radarr.validate({ oidcScopes: "openid" }, "6.0.0")).toThrow("host_config requires Radarr v7 or Sonarr v5");
-    expect(() => sonarr.validate({ oidcScopes: "openid" }, "4.0.14")).toThrow("host_config requires Radarr v7 or Sonarr v5");
-    expect(() => radarr.validate({ oidcScopes: "openid" }, "7.0.0")).not.toThrow();
-    expect(() => sonarr.validate({ oidcScopes: "openid" }, "5.0.0")).not.toThrow();
+    expect(() => new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr").validate(backup)).not.toThrow();
+    expect(() => new FederatedHostConfigSync(new SonarrClient("http://sonarr.test", "key"), "Sonarr").validate(backup)).not.toThrow();
+    expect(() => new FederatedHostConfigSync(new WhisparrClient("http://whisparr.test", "key"), "Whisparr").validate(backup)).not.toThrow();
   });
 
   test("syncs and re-reads the backup policy on Lidarr, Readarr and Prowlarr", async () => {
-    const apps: Array<{ label: string; path: string; create: () => HostClient<HostResource> }> = [
-      { label: "Lidarr", path: "/api/v1/config/host", create: () => new LidarrClient("http://lidarr.test", "key") },
-      { label: "Readarr", path: "/api/v1/config/host", create: () => new ReadarrClient("http://readarr.test", "key") },
-      { label: "Prowlarr", path: "/api/v1/config/host", create: () => new ProwlarrClient("http://prowlarr.test", "key") },
+    const apps: Array<{
+      label: string;
+      path: string;
+      create: () => LidarrClient | ReadarrClient | ProwlarrClient;
+      Sync: typeof HostConfigSync;
+    }> = [
+      { label: "Lidarr", path: "/api/v1/config/host", create: () => new LidarrClient("http://lidarr.test", "key"), Sync: HostConfigSync },
+      {
+        label: "Readarr",
+        path: "/api/v1/config/host",
+        create: () => new ReadarrClient("http://readarr.test", "key"),
+        Sync: ChaptarrHostConfigSync,
+      },
+      {
+        label: "Prowlarr",
+        path: "/api/v1/config/host",
+        create: () => new ProwlarrClient("http://prowlarr.test", "key"),
+        Sync: HostConfigSync,
+      },
     ];
     for (const app of apps) {
       const api = stubHostApi({ id: 1, backupFolder: "Backups", backupInterval: 7, backupRetention: 28, logLevel: "info" });
-      const sync = new BackupHostConfigSync<HostResource>(app.create(), app.label);
+      const sync = new app.Sync(app.create(), app.label);
       const diff = await sync.sync({ backup_interval: 1, backup_retention: 7 });
       expect(diff[0]?.fieldChanges).toEqual([
         { field: "backupInterval", from: 7, to: 1 },
@@ -326,8 +403,7 @@ describe("host settings synchronization", () => {
         { id: 1, backupFolder: "Backups", backupInterval: 7, backupRetention: 28, authenticationRequired: "enabled" },
         version,
       );
-      const sync = new SonarrHostConfigSync(new SonarrClient("http://sonarr.test", "key"));
-      sync.validate({ backup_interval: 1 }, version === "v3" ? "4.0.14" : "5.0.0");
+      const sync = new FederatedHostConfigSync(new SonarrClient("http://sonarr.test", "key"), "Sonarr");
       const diff = await sync.sync({ backup_interval: 1 });
       const hostPath = version === "v3" ? "/api/v3/config/host" : "/api/v5/settings/general";
       expect(api.requests).toEqual(["GET /api", `GET ${hostPath}`, `PUT ${hostPath}/1`]);
@@ -339,15 +415,14 @@ describe("host settings synchronization", () => {
 
   test("syncs the backup policy on Radarr versions before v7", async () => {
     const api = stubHostApi({ id: 1, backupFolder: "Backups", backupInterval: 7, backupRetention: 28 });
-    const sync = new RadarrHostConfigSync(new RadarrClient("http://radarr.test", "key"));
-    sync.validate({ backup_retention: 7 }, "6.0.0");
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr");
     const diff = await sync.sync({ backup_retention: 7 });
     expect(api.requests).toEqual(["GET /api/v3/config/host", "PUT /api/v3/config/host/1"]);
     expect(diff[0]?.fieldChanges).toEqual([{ field: "backupRetention", from: 28, to: 7 }]);
     expect(api.stored()).toMatchObject({ backupFolder: "Backups", backupInterval: 7, backupRetention: 7 });
   });
 
-  test("syncs the backup policy on Whisparr without touching its own settings", async () => {
+  test("syncs Whisparr's own settings and the backup policy", async () => {
     const api = stubHostApi({
       id: 1,
       backupFolder: "Backups",
@@ -356,24 +431,21 @@ describe("host settings synchronization", () => {
       whisparrAutoMatchOnDate: true,
       whisparrCorruptFileDetection: false,
     });
-    const sync = new WhisparrHostConfigSync(new WhisparrClient("http://whisparr.test", "key"));
-    sync.validate({ backup_interval: 1 }, "3.0.0");
-    const diff = await sync.sync({ backup_interval: 1 });
-    expect(api.requests).toEqual([
-      "GET /api/v3/config/host",
-      "GET /api/v3/config/host",
-      "PUT /api/v3/config/host/1",
-      "GET /api/v3/config/host",
+    const sync = new FederatedHostConfigSync(new WhisparrClient("http://whisparr.test", "key"), "Whisparr");
+    const diff = await sync.sync({ backup_interval: 1, whisparrAutoMatchOnDate: false });
+    expect(api.requests).toEqual(["GET /api/v3/config/host", "PUT /api/v3/config/host/1", "GET /api/v3/config/host"]);
+    expect(diff[0]?.fieldChanges).toEqual([
+      { field: "whisparrAutoMatchOnDate", from: true, to: false },
+      { field: "backupInterval", from: 7, to: 1 },
     ]);
-    expect(diff[0]?.fieldChanges).toEqual([{ field: "backupInterval", from: 7, to: 1 }]);
-    expect(api.stored()).toMatchObject({ whisparrAutoMatchOnDate: true, whisparrCorruptFileDetection: false, backupInterval: 1 });
+    expect(api.stored()).toMatchObject({ whisparrAutoMatchOnDate: false, whisparrCorruptFileDetection: false, backupInterval: 1 });
   });
 
   test("dry run reports backup changes without writing them", async () => {
     vi.stubEnv("DRY_RUN", "true");
     initEnvs();
     const api = stubHostApi({ id: 1, backupFolder: "Backups", backupInterval: 7, backupRetention: 28 });
-    const sync = new BackupHostConfigSync<HostResource>(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
     const report = await sync.sync({ backup_interval: 1 });
     expect(report[0]?.fieldChanges).toEqual([{ field: "backupInterval", from: 7, to: 1 }]);
     expect(api.writes).toHaveLength(0);
