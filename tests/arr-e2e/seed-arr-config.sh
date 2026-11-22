@@ -35,57 +35,20 @@ for host in localhost 127.0.0.1 "$service"; do
 done
 
 if [ "$merged" != "$current" ]; then
+  # Work on the flattened document so an element split across lines - including a
+  # self-closing tag - is matched as one string. A one-line config.xml is valid XML.
   if grep -q '<AllowedHosts' "$config"; then
-    # Replace the first element in any form: single-line, self-closing, or multiline.
-    awk -v merged="$merged" '
-      function canonical(indent) { return indent "<AllowedHosts>" merged "</AllowedHosts>" }
-      !done && /<AllowedHosts/ {
-        if ($0 ~ /<\/AllowedHosts>/) {
-          sub(/<AllowedHosts[^>]*>[^<]*<\/AllowedHosts>/, canonical(""))
-          print
-          done = 1
-          next
-        }
-        if ($0 ~ /<AllowedHosts[^>]*\/>/) {
-          sub(/<AllowedHosts[^>]*\/>/, canonical(""))
-          print
-          done = 1
-          next
-        }
-        match($0, /<AllowedHosts/)
-        pendingPrefix = substr($0, 1, RSTART - 1)
-        inside = 1
-        done = 1
-        next
-      }
-      inside {
-        if ($0 ~ /<\/AllowedHosts>/) {
-          match($0, /<\/AllowedHosts>/)
-          print pendingPrefix canonical("") substr($0, RSTART + RLENGTH)
-          inside = 0
-        }
-        next
-      }
-      { print }
-    ' "$config" > "${config}.tmp"
-    mv "${config}.tmp" "$config"
+    printf '%s\n' "$flattened" | sed \
+      -e "s#<AllowedHosts[^>]*/>#<AllowedHosts>${merged}</AllowedHosts>#" \
+      -e "s#<AllowedHosts[^>]*>[^<]*</AllowedHosts>#<AllowedHosts>${merged}</AllowedHosts>#" \
+      > "${config}.tmp"
   else
     # No element: insert before the closing root tag, even when it shares a line.
-    awk -v entry="  <AllowedHosts>${merged}</AllowedHosts>" '
-      !done {
-        i = index($0, "</Config>")
-        if (i > 0) {
-          print substr($0, 1, i - 1) entry
-          print substr($0, i)
-          done = 1
-          next
-        }
-      }
-      { print }
-      END { if (!done) exit 1 }
-    ' "$config" > "${config}.tmp"
-    mv "${config}.tmp" "$config"
+    printf '%s\n' "$flattened" \
+      | sed "s#</Config>#  <AllowedHosts>${merged}</AllowedHosts></Config>#" \
+      > "${config}.tmp"
   fi
+  mv "${config}.tmp" "$config"
 fi
 
 chown "${PUID:-1000}:${PGID:-1000}" "$config"
