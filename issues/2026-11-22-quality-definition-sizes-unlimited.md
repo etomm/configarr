@@ -1,6 +1,6 @@
 # Quality-definition sizes: unlimited values, per-app field sets and a `unlimited` keyword
 
-**Status:** proposed
+**Status:** implemented in `v1.39.3-etomm.5` (`c1588a5`) — one residual gap, see "Implementation status" at the end
 **Severity:** medium — a valid, common server state cannot be expressed without a misleading validation warning or an invented number
 **Area:** `src/types/trashguide.types.ts`, `src/types/config.types.ts`, `src/qualityDefinitions/`, `tests/arr-e2e/`
 **Found in:** `1.39.3-etomm.4`
@@ -188,3 +188,27 @@ Chaptarr, Whisparr and already snapshots/restores quality definitions):
   not reject `min > preferred`; do not rely on it for validation.
 - Naming: `unlimited` as a keyword is a config-surface decision. Keep `null` supported so existing
   YAML and generated configs do not break.
+
+## Implementation status (v1.39.3-etomm.5, `c1588a5`)
+
+Shipped and matching this issue:
+
+- `SizeValueSchema` accepting a number, `"unlimited"` and `null`, normalised to `null`;
+  `MinSizeValueSchema` deliberately without `"unlimited"`.
+- TRaSH schema untouched; `InputConfigQualityDefinitionQualityBaseSchema` (no `preferred`) and
+  `InputConfigQualityDefinitionQualityPreferredSchema` exist, with an "at least one size" refinement.
+- Diff semantics: absent = unmanaged, `0` and `null` compared via `normalizeSize`, `preferred: 0`
+  now written (the truthiness bug is fixed), `null`/`0` treated as equal for `max`.
+- `preferred_ratio` rejected together with an unlimited size.
+- Sonarr v5 emits an explicit warning that `quality_definition` sizes are ignored and that
+  `quality_sizes` belongs on the profile; `quality_sizes` accepts `"unlimited"`.
+- Unit tests for normalisation, idempotency, `min: unlimited` rejection, ratio rejection; e2e tests
+  added for Radarr, Lidarr, Readarr, Chaptarr and Sonarr.
+
+### Residual gap
+
+`InputConfigQualityDefinitionQualityBaseSchema` is exported and unit-tested but **not wired to
+Readarr/Chaptarr in production**: `src/types/config.types.ts` uses the *preferred* schema for every
+instance, so declaring `preferred` on a Readarr/Chaptarr instance is not rejected with an app-naming
+error — it is simply ignored by the Readarr sync path. Either the instance schema should select the
+base variant for those apps, or the syncer should reject `preferred` explicitly.
