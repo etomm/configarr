@@ -215,11 +215,14 @@ export abstract class ProfileAwareRootFolderSync<
     return {};
   }
 
+  /** App-specific config validation run before profiles and tags are resolved. */
+  protected validateRootFolderConfig(_config: TConfig): void {}
+
   protected override loadRootFoldersFromServer(): Promise<TResource[]> {
     return this.api.getRootfolders();
   }
 
-  private async getProfileIdMaps(serverCache: ServerCache) {
+  protected async getProfileIdMaps(serverCache: ServerCache) {
     if (this.profileIdMaps) {
       return this.profileIdMaps;
     }
@@ -255,6 +258,8 @@ export abstract class ProfileAwareRootFolderSync<
         `${this.arrName} root folders must be objects with name, metadata_profile, and quality_profile. Got string: ${config}`,
       );
     }
+
+    this.validateRootFolderConfig(config);
 
     const { quality: qualityProfileMap, metadata: metadataProfileMap } = await this.getProfileIdMaps(serverCache);
 

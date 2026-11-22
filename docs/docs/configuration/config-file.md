@@ -969,11 +969,61 @@ chaptarr:
 | ----------- | -------------------------------------------------------------------------------------------- |
 | `ebook`     | Root folders use folder type `2`; naming writes the `ebook*` keys.                            |
 | `audiobook` | Root folders use folder type `1`; naming keeps the generic book keys.                         |
-| `mixed`     | Root folders use folder type `0`; both profile pairs are sent.                               |
+| `mixed`     | Root folders use folder type `0`; both media sides are configured.                            |
+
+Set `folder_type` on a root folder to override the instance `media_type` for that folder. A
+typed folder can declare the per-media settings Chaptarr exposes:
+
+```yml
+chaptarr:
+  mixed:
+    base_url: http://chaptarr:8787
+    api_key: !secret CHAPTARR_API_KEY
+    media_type: mixed
+    root_folders:
+      - path: /books
+        name: Books
+        metadata_profile: Standard
+        quality_profile: E-Book
+        folder_type: mixed
+        place_ebooks_with_audiobooks: true
+        default_sync_monitored_across_formats: true
+        audiobook:
+          quality_profile: Audiobook
+          metadata_profile: Audiobook Default
+          monitored: true
+          monitor_existing: all
+          monitor_new_items: new
+          tags: [audiobooks]
+          write_audiobookshelf_metadata_json: true
+          write_audiobookshelf_cover: true
+        ebook:
+          quality_profile: E-Book
+          metadata_profile: Ebook Default
+          monitored: true
+          monitor_existing: all
+          monitor_new_items: all
+          tags: [ebooks]
+          write_audiobookshelf_metadata_json: false
+          write_audiobookshelf_cover: false
+```
+
+`ebook` and `audiobook` accept `quality_profile`, `metadata_profile`, `monitored`,
+`monitor_existing` (`all`, `none`, `missing`, `existing`), `monitor_new_items` (`all`, `none`,
+`new`), `tags`, `write_audiobookshelf_metadata_json` and `write_audiobookshelf_cover`. The
+deprecated Chaptarr `monitor_existing_books` and `monitor_future` aliases are accepted too; the
+canonical fields win. Each profile falls back to the matching flat field (`ebook_*` /
+`audiobook_*`) when set, and then to the folder's `quality_profile` / `metadata_profile`. The
+nested block wins when a flat field is also set.
+
+`place_ebooks_with_audiobooks` and `default_sync_monitored_across_formats` are only valid on
+mixed folders. Configarr rejects an `ebook` block on an audiobook-only folder, an `audiobook`
+block on an ebook-only folder, and any Chaptarr-only root-folder field on a vanilla `readarr:`
+instance.
 
 For `mixed`, set `ebook_quality_profile`, `ebook_metadata_profile`,
-`audiobook_quality_profile` and `audiobook_metadata_profile` on the folder. Each side falls
-back to `quality_profile` / `metadata_profile` when omitted.
+`audiobook_quality_profile` and `audiobook_metadata_profile` on the folder to keep using the
+flat fields. Each side falls back to `quality_profile` / `metadata_profile` when omitted.
 
 With `media_type` set, a media-typed quality profile only considers its own media side:
 the qualities the existing server profile already contains plus the qualities the config

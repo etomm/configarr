@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { DownloadProtocol } from "../../src/__generated__/readarr/data-contracts";
 import { ChaptarrClient } from "../../src/clients/chaptarr-client";
 import { StandardDelayProfileSync } from "../../src/delayProfiles/delayProfileBase";
+import type { ChaptarrRootFolderResource } from "../../src/rootFolder/rootFolderChaptarr";
 import { InputConfigDelayProfileSchema } from "../../src/types/config.types";
 import {
   arrConnection,
@@ -15,6 +16,7 @@ import {
   downloadClientConfigBlock,
   E2E_ROOT_A,
   E2E_ROOT_B,
+  E2E_ROOT_C,
   e2eCustomFormatDefinition,
   e2eMediaSettings,
   mediaConfig,
@@ -503,6 +505,152 @@ describe("chaptarr (live)", () => {
     assertPipelineSucceeded(deleted.result, ["CHAPTARR"]);
     expect(await pathsOf()).toContain(E2E_ROOT_A);
     expect(await pathsOf()).not.toContain(E2E_ROOT_B);
+  });
+
+  test("root folders with per-media settings", async () => {
+    const preserved = await preservedRootFolderObjects(client);
+    const yaml = (folders: Record<string, unknown>[]) =>
+      chaptarrConfig({
+        quality_profiles: [qualityProfile()],
+        metadata_profiles: [metadataProfile()],
+        root_folders: [...folders, ...preserved],
+      });
+    const roots = async () => (await client.getRootfolders()) as ChaptarrRootFolderResource[];
+    const rootAt = async (path: string) => (await roots()).find((folder) => folder.path === path);
+
+    const ebookRoot = {
+      ...rootFolder(E2E_ROOT_A, "e2e-root-ebook"),
+      folder_type: "ebook",
+      ebook: {
+        quality_profile: "E-Book",
+        metadata_profile: "Ebook Default",
+        monitored: true,
+        monitor_existing: "all",
+        monitor_new_items: "all",
+        tags: ["e2e-release"],
+        write_audiobookshelf_metadata_json: true,
+        write_audiobookshelf_cover: true,
+      },
+    };
+    const audiobookRoot = {
+      ...rootFolder(E2E_ROOT_B, "e2e-root-audio"),
+      folder_type: "audiobook",
+      audiobook: {
+        quality_profile: "Audiobook",
+        metadata_profile: "Audiobook Default",
+        monitored: true,
+        monitor_existing: "none",
+        monitor_new_items: "new",
+        tags: ["e2e-release"],
+        write_audiobookshelf_metadata_json: true,
+        write_audiobookshelf_cover: false,
+      },
+    };
+    const mixedRoot = {
+      ...rootFolder(E2E_ROOT_C, "e2e-root-mixed"),
+      folder_type: "mixed",
+      place_ebooks_with_audiobooks: true,
+      default_sync_monitored_across_formats: false,
+      ebook: {
+        quality_profile: "E-Book",
+        metadata_profile: "Ebook Default",
+        monitored: false,
+        monitor_existing: "none",
+        monitor_new_items: "none",
+        tags: ["e2e-release"],
+        write_audiobookshelf_metadata_json: false,
+        write_audiobookshelf_cover: true,
+      },
+      audiobook: {
+        quality_profile: "Audiobook",
+        metadata_profile: "Audiobook Default",
+        monitored: true,
+        monitor_existing: "all",
+        monitor_new_items: "new",
+        tags: ["e2e-release"],
+        write_audiobookshelf_metadata_json: true,
+        write_audiobookshelf_cover: true,
+      },
+    };
+
+    const created = await syncConfig(yaml([ebookRoot, audiobookRoot, mixedRoot]));
+    assertPipelineSucceeded(created.result, ["CHAPTARR"]);
+    const tagListed = (await client.getTags()).find((tag) => tag.label === "e2e-release")?.id;
+
+    const ebook = await rootAt(E2E_ROOT_A);
+    expect(ebook).toMatchObject({
+      folderType: 2,
+      ebookQualityProfileId: findNamed(await client.getQualityProfiles(), "E-Book")?.id,
+      ebookMetadataProfileId: findNamed(await client.getMetadataProfiles(), "Ebook Default")?.id,
+      ebook: {
+        monitored: true,
+        monitorExistingMode: "all",
+        monitorNewItems: "all",
+        writeAudioBookShelfMetadataJson: true,
+        writeAudioBookShelfCover: true,
+        tags: [tagListed],
+      },
+    });
+    expect(ebook?.audiobook).toBeUndefined();
+    expect(ebook).not.toHaveProperty("defaultQualityProfileId");
+
+    const audiobook = await rootAt(E2E_ROOT_B);
+    expect(audiobook).toMatchObject({
+      folderType: 1,
+      audiobookQualityProfileId: findNamed(await client.getQualityProfiles(), "Audiobook")?.id,
+      audiobookMetadataProfileId: findNamed(await client.getMetadataProfiles(), "Audiobook Default")?.id,
+      audiobook: {
+        monitored: true,
+        monitorExistingMode: "none",
+        monitorNewItems: "new",
+        writeAudioBookShelfMetadataJson: true,
+        writeAudioBookShelfCover: false,
+        tags: [tagListed],
+      },
+    });
+    expect(audiobook?.ebook).toBeUndefined();
+
+    const mixed = await rootAt(E2E_ROOT_C);
+    expect(mixed).toMatchObject({
+      folderType: 0,
+      placeEbooksWithAudiobooks: true,
+      defaultSyncMonitoredAcrossFormats: false,
+      ebook: {
+        monitored: false,
+        monitorExistingMode: "none",
+        monitorNewItems: "none",
+        writeAudioBookShelfMetadataJson: false,
+        writeAudioBookShelfCover: true,
+      },
+      audiobook: {
+        monitored: true,
+        monitorExistingMode: "all",
+        monitorNewItems: "new",
+        writeAudioBookShelfMetadataJson: true,
+        writeAudioBookShelfCover: true,
+      },
+    });
+
+    const second = await syncConfig(yaml([ebookRoot, audiobookRoot, mixedRoot]), created.workspace);
+    assertPipelineSucceeded(second.result, ["CHAPTARR"]);
+    assertDiffUpToDate(second.result, ["CHAPTARR"]);
+
+    const changed = await syncConfig(
+      yaml([{ ...ebookRoot, ebook: { ...ebookRoot.ebook, monitored: false, monitor_existing: "none" } }, audiobookRoot, mixedRoot]),
+      created.workspace,
+    );
+    assertPipelineSucceeded(changed.result, ["CHAPTARR"]);
+    expect((await rootAt(E2E_ROOT_A))?.ebook).toMatchObject({ monitored: false, monitorExistingMode: "none" });
+
+    const third = await syncConfig(
+      yaml([{ ...ebookRoot, ebook: { ...ebookRoot.ebook, monitored: false, monitor_existing: "none" } }, audiobookRoot, mixedRoot]),
+      created.workspace,
+    );
+    assertPipelineSucceeded(third.result, ["CHAPTARR"]);
+    assertDiffUpToDate(third.result, ["CHAPTARR"]);
+
+    const cleaned = await syncConfig(yaml([]), created.workspace);
+    assertPipelineSucceeded(cleaned.result, ["CHAPTARR"]);
   });
 
   test("global indexer config", async () => {

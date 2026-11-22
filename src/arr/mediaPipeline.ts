@@ -645,7 +645,9 @@ export const completeMediaSync = async <T extends MediaArrType>(ctx: MediaSyncCo
             config.delay_profiles?.additional?.flatMap((profile) => profile.tags ?? []),
             config.release_profiles?.flatMap((profile) => profile.tags ?? []),
             // Only the object form of `root_folders` carries tags.
-            config.root_folders?.filter((folder) => typeof folder !== "string").flatMap((folder) => folder.tags ?? []),
+            config.root_folders
+              ?.filter((folder) => typeof folder !== "string")
+              .flatMap((folder) => [...(folder.tags ?? []), ...(folder.ebook?.tags ?? []), ...(folder.audiobook?.tags ?? [])]),
             config.download_clients?.data?.flatMap((downloadClient) => downloadClient.tags ?? []),
             config.import_lists?.data?.flatMap((item) => item.tags ?? []),
             config.notifications?.data?.flatMap((item) => item.tags ?? []),

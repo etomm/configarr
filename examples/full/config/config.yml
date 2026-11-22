@@ -691,6 +691,30 @@ chaptarr:
         name: Books
         metadata_profile: Standard
         quality_profile: E-Book
+        # Per-folder override of the instance media_type.
+        # folder_type: mixed
+        # Mixed-only placement and cross-format monitoring defaults.
+        # place_ebooks_with_audiobooks: true
+        # default_sync_monitored_across_formats: true
+        # Per-media settings. Nested blocks win over the flat ebook_*/audiobook_* fields.
+        # ebook:
+        #   quality_profile: E-Book
+        #   metadata_profile: Ebook Default
+        #   monitored: true
+        #   monitor_existing: all
+        #   monitor_new_items: all
+        #   tags: [ebooks]
+        #   write_audiobookshelf_metadata_json: true
+        #   write_audiobookshelf_cover: true
+        # audiobook:
+        #   quality_profile: Audiobook
+        #   metadata_profile: Audiobook Default
+        #   monitored: true
+        #   monitor_existing: all
+        #   monitor_new_items: new
+        #   tags: [audiobooks]
+        #   write_audiobookshelf_metadata_json: true
+        #   write_audiobookshelf_cover: true
     include:
       - template: readarr
 

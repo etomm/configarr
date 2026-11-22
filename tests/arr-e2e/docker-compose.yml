@@ -141,6 +141,7 @@ services:
       - chaptarr-data:/config
       - ./fixtures/media/e2e:/data/e2e
       - ./fixtures/media/e2e-b:/data/e2e-b
+      - ./fixtures/media/e2e-c:/data/e2e-c
     ports:
       - "18788:8789"
 

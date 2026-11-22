@@ -493,6 +493,22 @@ describe("readarr (live)", () => {
     expect(await pathsOf()).not.toContain(E2E_ROOT_B);
   });
 
+  test("root folders reject Chaptarr-only fields", async () => {
+    const preserved = await preservedRootFolderObjects(client);
+    const { result } = await syncConfig(
+      mediaConfig("READARR", {
+        quality_profiles: [qualityProfile()],
+        metadata_profiles: [metadataProfile()],
+        root_folders: [{ ...rootFolder(E2E_ROOT_A, "e2e-root"), folder_type: "mixed" }, ...preserved],
+      }),
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const text = `${result.stdout}\n${result.stderr}`;
+    expect(text).toContain("folder_type");
+    expect(text).toContain("only supported by Chaptarr, not Readarr");
+  });
+
   test("global indexer config", async () => {
     const yaml = (rss: number, retention: number) =>
       mediaConfig("READARR", {
