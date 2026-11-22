@@ -35,17 +35,20 @@ for host in localhost 127.0.0.1 "$service"; do
 done
 
 if [ "$merged" != "$current" ]; then
+  # sed replacement data: escape the delimiter, backslash and & so XML entities or
+  # unusual host text survive verbatim instead of being re-interpreted.
+  escaped=$(printf '%s' "$merged" | sed 's/[\\&#]/\\&/g')
   # Work on the flattened document so an element split across lines - including a
   # self-closing tag - is matched as one string. A one-line config.xml is valid XML.
   if grep -q '<AllowedHosts' "$config"; then
     printf '%s\n' "$flattened" | sed \
-      -e "s#<AllowedHosts[^>]*/>#<AllowedHosts>${merged}</AllowedHosts>#" \
-      -e "s#<AllowedHosts[^>]*>[^<]*</AllowedHosts>#<AllowedHosts>${merged}</AllowedHosts>#" \
+      -e "s#<AllowedHosts[^>]*/>#<AllowedHosts>${escaped}</AllowedHosts>#" \
+      -e "s#<AllowedHosts[^>]*>[^<]*</AllowedHosts>#<AllowedHosts>${escaped}</AllowedHosts>#" \
       > "${config}.tmp"
   else
     # No element: insert before the closing root tag, even when it shares a line.
     printf '%s\n' "$flattened" \
-      | sed "s#</Config>#  <AllowedHosts>${merged}</AllowedHosts></Config>#" \
+      | sed "s#</Config>#  <AllowedHosts>${escaped}</AllowedHosts></Config>#" \
       > "${config}.tmp"
   fi
   mv "${config}.tmp" "$config"
