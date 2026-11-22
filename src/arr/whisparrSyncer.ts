@@ -31,7 +31,7 @@ export class WhisparrSyncer {
         releaseProfiles: new ReleaseProfileWhisparrSync(client),
         root: new PathRootFolderSync(client),
         downloadClients: new WhisparrDownloadClientSync(client),
-        hostConfig: new FederatedHostConfigSync(client, "Whisparr"),
+        hostConfig: new FederatedHostConfigSync(client, "Whisparr", instance.base_url),
         indexerConfig: client,
       },
     });

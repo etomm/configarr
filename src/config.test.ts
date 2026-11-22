@@ -2780,6 +2780,7 @@ describe("InputConfigSchemaSchema (regression)", () => {
       local_username: "admin",
       local_password: "secret",
       rotate_local_password: true,
+      test_secrets: false,
       oidc_allowed_email_domains: "example.com",
     };
     expect(HostConfigSchema.parse(config)).toEqual(config);

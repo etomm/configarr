@@ -29,7 +29,7 @@ export class SonarrSyncer {
       client,
       supportsProfileQualitySizes: await client.supportsProfileQualitySizes(),
       syncs: {
-        hostConfig: new FederatedHostConfigSync(client, "Sonarr"),
+        hostConfig: new FederatedHostConfigSync(client, "Sonarr", instance.base_url),
         qd: new QualityDefinitionSonarrSync(client),
         mm: new SonarrMediaManagementSync(client),
         qp: qualityProfiles,

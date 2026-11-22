@@ -34,7 +34,7 @@ export class ChaptarrSyncer extends ReadarrSyncer {
     return new ChaptarrMetadataProfileSync(client);
   }
 
-  protected override createHostConfigSync(client: ReadarrClient) {
-    return new ChaptarrHostConfigSync(client, this.arrLabel);
+  protected override createHostConfigSync(client: ReadarrClient, baseUrl: string) {
+    return new ChaptarrHostConfigSync(client, this.arrLabel, baseUrl);
   }
 }

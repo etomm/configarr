@@ -1,6 +1,6 @@
 # Host-config secrets: apps that return empty instead of a mask never converge
 
-**Status:** proposed — see "Validation by testing" for an empirical alternative
+**Status:** implemented — validation by testing, with `test_secrets` as the escape hatch
 **Severity:** medium — declaring a secret for such an app rewrites `config/host` on every run, so the config is never idempotent
 **Area:** `src/hostConfig/hostConfigSync.ts`
 **Found in:** `1.39.3-etomm.7`
@@ -181,3 +181,27 @@ Recommendations:
 This approach would remove the need for the empty-vs-mask special case entirely: the empty string never
 enters the comparison, because the app itself answers whether the declared credential is the one in
 use.
+
+## Implementation (validation by testing)
+
+`src/hostConfig/hostSecretProbe.ts` performs the probes; `syncHostConfig` treats a probe answer as the
+comparison and falls back to the stored-value rules when it gets `undefined`.
+
+- `local_password`: one `POST <base_url>/login` with the declared `local_username` (or the live
+  username). An `*Auth`/ASP.NET auth cookie means the app already accepts it; a rejection writes the
+  declared credentials. A 2xx/3xx/401/403 without that cookie is a rejection; any other status,
+  network failure or timeout returns `undefined`.
+- `oidcClientSecret`: discovery from `oidcAuthority` plus `client_credentials` at the token endpoint.
+  `401 invalid_client` writes; `unauthorized_client`/`invalid_grant` (and a 2xx) mean the client
+  authenticated; anything else returns `undefined`.
+- Rotation flags still force a write without probing, so a valid-but-unproven secret can be bootstrapped.
+- `test_secrets: false` disables both probes. `ssl_cert_password` has no endpoint and keeps the old
+  stored-value behaviour.
+- Probe attempts are single-shot and logged by outcome only, never with credentials or response bodies.
+
+The empty string is still read as unreadable when the probe cannot answer, so an unreachable IdP or a
+login endpoint the app refuses degrades to the existing rotation-flag semantics. `local_password`
+probing is covered by the Radarr v5/v6 e2e; the v7 federated login endpoint rejects the local account
+even when the same credentials are accepted by v5/v6, so that project skips the check. Chaptarr's host
+API in the e2e container does not persist local credentials or `authenticationMethod`, so its live
+coverage remains the unit fixtures and the stored-value fallback.

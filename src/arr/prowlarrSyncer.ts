@@ -42,7 +42,7 @@ export class ProwlarrSyncer {
       if (!parsed.success) {
         throw new ConfigValidationError("Invalid host_config: " + parsed.error.issues.map((issue) => issue.message).join("; "));
       }
-      const hostConfig = new ProwlarrHostConfigSync(client, "Prowlarr");
+      const hostConfig = new ProwlarrHostConfigSync(client, "Prowlarr", instance.base_url);
       hostConfig.validate(parsed.data);
       instance.host_config = parsed.data;
       diffCollector.add(await hostConfig.sync(parsed.data));

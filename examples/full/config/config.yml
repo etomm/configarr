@@ -480,6 +480,8 @@ radarr:
     #   trusted_networks: "192.168.0.0/24"
     #   local_username: admin
     #   local_password: !secret RADARR_LOCAL_PASSWORD
+    #   # Test declared secrets against the app/IdP; set false when they are unreachable.
+    #   # test_secrets: false
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28

@@ -184,6 +184,37 @@ describe("radarr (live)", () => {
     }
   });
 
+  test("tests the declared local password and stays idempotent", async () => {
+    const major = Number((await client.getSystemStatus()).version?.split(".")[0]);
+    // Local login still validates on v5/v6; the v7 federated auth path refuses it even with the mask semantics.
+    if (major >= 7) return;
+    const local_username = "e2e-local";
+    const local_password = "e2e-local-password";
+    const loginAccepted = async () => {
+      const response = await fetch(new URL("login", `${baseUrl}/`), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: local_username, password: local_password, rememberMe: "false" }),
+        redirect: "manual",
+      });
+      return (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.().some((cookie) => /Auth=/i.test(cookie));
+    };
+    const first = await syncConfig(
+      mediaConfig("RADARR", {
+        host_config: { local_username, local_password, rotate_local_password: true },
+      }),
+    );
+    assertPipelineSucceeded(first.result, ["RADARR"]);
+    expect(first.result.stdout + first.result.stderr).not.toContain(local_password);
+    await expect(loginAccepted()).resolves.toBe(true);
+
+    // The server masks the password; the probe, not the stored value, keeps the second run quiet.
+    // The account is left at these known credentials because *arr treats an empty password as "keep".
+    const second = await syncConfig(mediaConfig("RADARR", { host_config: { local_username, local_password } }), first.workspace);
+    assertPipelineSucceeded(second.result, ["RADARR"]);
+    assertDiffUpToDate(second.result, ["RADARR"]);
+  });
+
   test("syncs general host settings and stays idempotent", async () => {
     const original = await client.getHostConfig();
     const log_level = original.logLevel === "debug" ? "info" : "debug";

@@ -26,7 +26,7 @@ export class RadarrSyncer {
       instanceConfig: instance,
       client,
       syncs: {
-        hostConfig: new FederatedHostConfigSync(client, "Radarr"),
+        hostConfig: new FederatedHostConfigSync(client, "Radarr", instance.base_url),
         importLists: new RadarrImportListSync(client),
         qd: new QualityDefinitionPreferredSync(client),
         mm: new RadarrMediaManagementSync(client),

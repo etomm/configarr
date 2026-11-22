@@ -40,8 +40,8 @@ export class ReadarrSyncer {
     return new ReadarrMetadataProfileSync(client, this.arrType);
   }
 
-  protected createHostConfigSync(client: ReadarrClient) {
-    return new HostConfigSync(client, this.arrLabel);
+  protected createHostConfigSync(client: ReadarrClient, baseUrl: string) {
+    return new HostConfigSync(client, this.arrLabel, baseUrl);
   }
 
   async run(globalConfig: InputConfigSchema, instance: InputConfigArrInstance, instanceName: string): Promise<InstanceDiffReport> {
@@ -61,7 +61,7 @@ export class ReadarrSyncer {
         root: this.createRootFolderSync(client, instance.media_type),
         downloadClients: this.createDownloadClientSync(client),
         indexerConfig: client,
-        hostConfig: this.createHostConfigSync(client),
+        hostConfig: this.createHostConfigSync(client, instance.base_url),
       },
       mediaSyncs: (mediaType) => ({
         mm: this.createMediaManagementSync(client, mediaType),

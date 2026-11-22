@@ -853,6 +853,8 @@ describe("chaptarr (live)", () => {
       oidcScopes: "openid profile email",
       oidc_allowed_email_domains: "example.com",
       oidc_require_email_verified: true,
+      // The authority is a placeholder; do not spend a discovery timeout on every run.
+      test_secrets: false,
     } as const;
     try {
       const first = await syncConfig(

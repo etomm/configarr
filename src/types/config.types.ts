@@ -627,6 +627,9 @@ export const HostConfigSchema = z
     local_username: z.string().optional(),
     local_password: z.string().optional(),
     rotate_local_password: z.boolean().optional(),
+    // Test declared local and OIDC secrets against the app/authority instead of trusting the
+    // unreadable stored value. Disable when a run cannot reach the app's login or the IdP.
+    test_secrets: z.boolean().optional(),
     // Chaptarr fork-only OIDC fields. Ignored on instances that do not expose them.
     oidc_allowed_emails: z.string().optional(),
     oidc_allowed_email_domains: z.string().optional(),

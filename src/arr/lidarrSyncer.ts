@@ -32,7 +32,7 @@ export class LidarrSyncer {
         root: new LidarrRootFolderSync(client),
         downloadClients: new LidarrDownloadClientSync(client),
         indexerConfig: client,
-        hostConfig: new HostConfigSync(client, "Lidarr"),
+        hostConfig: new HostConfigSync(client, "Lidarr", instance.base_url),
       },
     });
     const metadataSync = new LidarrMetadataProfileSync(client);

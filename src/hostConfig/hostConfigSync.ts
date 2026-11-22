@@ -3,6 +3,7 @@ import { SECRET_MASK } from "../diffReport/redactSecrets";
 import { getEnvs } from "../env";
 import type { InputConfigArrInstance } from "../types/config.types";
 import { ConfigValidationError } from "../validation";
+import { createHostSecretProbe, type HostSecretProbe, logSecretProbe } from "./hostSecretProbe";
 
 export type HostConfig = NonNullable<InputConfigArrInstance["host_config"]>;
 
@@ -115,7 +116,7 @@ const chaptarrFields = {
 } as const satisfies HostFields;
 
 const secretKeys = new Set(["oidcClientSecret", "local_password", "ssl_cert_password"]);
-const controlKeys = new Set(["update_oidc_client_secret", "rotate_local_password", "rotate_ssl_cert_password"]);
+const controlKeys = new Set(["update_oidc_client_secret", "rotate_local_password", "rotate_ssl_cert_password", "test_secrets"]);
 
 /** Authentication methods every supported *arr accepts. */
 const baseAuthenticationMethods = new Set(["none", "basic", "forms", "external"]);
@@ -129,7 +130,25 @@ type SyncOptions = {
   rotateOidcSecret?: boolean;
   rotateLocalPassword?: boolean;
   rotateSslCertPassword?: boolean;
+  /** Test declared credentials against the server/authority instead of comparing an unreadable value. */
+  testSecrets?: boolean;
+  probe?: HostSecretProbe;
 };
+
+/**
+ * Decide whether a declared secret has to be written. An explicit rotation always wins; a
+ * probe that answers decides the rest. When the probe cannot answer, keep the historical
+ * comparison so an unreachable app or IdP degrades to the stored value instead of rewriting it.
+ */
+async function decideSecret(
+  rotate: boolean | undefined,
+  probe: (() => Promise<boolean | undefined>) | undefined,
+  fallback: () => boolean,
+): Promise<{ write: boolean; accepted?: boolean }> {
+  if (rotate) return { write: true };
+  const accepted = await probe?.();
+  return accepted === undefined ? { write: fallback() } : { write: !accepted, accepted };
+}
 
 /**
  * Apply the declared host settings. Every declared field must be part of the app's
@@ -159,12 +178,22 @@ export async function syncHostConfig(client: HostClient, config: HostConfig, opt
   if ("oidcClientSecret" in options.fields && config.oidcClientSecret !== undefined) {
     if (!Object.hasOwn(current, "oidcClientSecret")) {
       unsupported.push("oidcClientSecret");
-    } else if (
-      options.rotateOidcSecret ||
-      (current.oidcClientSecret !== SECRET_MASK && current.oidcClientSecret !== config.oidcClientSecret)
-    ) {
-      changes.push({ field: "oidcClientSecret", from: SECRET_MASK, to: SECRET_MASK });
-      next = { ...next, oidcClientSecret: config.oidcClientSecret };
+    } else {
+      const secret = config.oidcClientSecret;
+      const authority = config.oidcAuthority ?? current.oidcAuthority;
+      const clientId = config.oidcClientId ?? current.oidcClientId;
+      const probeApi = options.probe;
+      const probe =
+        options.testSecrets && probeApi && authority && clientId ? () => probeApi.oidcClientSecret(authority, clientId, secret) : undefined;
+      const decision = await decideSecret(options.rotateOidcSecret, probe, () => {
+        return current.oidcClientSecret !== SECRET_MASK && current.oidcClientSecret !== secret;
+      });
+      if (probe && !options.rotateOidcSecret) logSecretProbe(options.appLabel, "oidcClientSecret", decision.accepted);
+
+      if (decision.write) {
+        changes.push({ field: "oidcClientSecret", from: SECRET_MASK, to: SECRET_MASK });
+        next = { ...next, oidcClientSecret: secret };
+      }
     }
   }
 
@@ -185,11 +214,20 @@ export async function syncHostConfig(client: HostClient, config: HostConfig, opt
   if ("local_password" in options.fields && config.local_password !== undefined) {
     if (!Object.hasOwn(current, "password")) {
       unsupported.push("local_password");
-    } else if (options.rotateLocalPassword || current.password == null || current.password === "") {
-      // The API never returns the password, only null/empty or a mask. Compare presence,
-      // then use the same explicit rotation semantics as oidcClientSecret.
-      changes.push({ field: "password", from: SECRET_MASK, to: SECRET_MASK });
-      next = { ...next, password: config.local_password, passwordConfirmation: config.local_password };
+    } else {
+      const secret = config.local_password;
+      const username = config.local_username ?? current.username;
+      const probeApi = options.probe;
+      const probe = options.testSecrets && probeApi && username ? () => probeApi.localPassword(username, secret) : undefined;
+      // The API never returns the password, only null/empty or a mask. A probe answers for
+      // real; without one, compare presence and keep the explicit rotation semantics.
+      const decision = await decideSecret(options.rotateLocalPassword, probe, () => current.password == null || current.password === "");
+      if (probe && !options.rotateLocalPassword) logSecretProbe(options.appLabel, "local_password", decision.accepted);
+
+      if (decision.write) {
+        changes.push({ field: "password", from: SECRET_MASK, to: SECRET_MASK });
+        next = { ...next, password: secret, passwordConfirmation: secret };
+      }
     }
   }
 
@@ -204,10 +242,15 @@ export async function syncHostConfig(client: HostClient, config: HostConfig, opt
 }
 
 export class HostConfigSync {
+  private readonly probe: HostSecretProbe | undefined;
+
   constructor(
     private readonly client: HostClient,
     private readonly appLabel: string,
-  ) {}
+    baseUrl?: string,
+  ) {
+    this.probe = baseUrl ? createHostSecretProbe(baseUrl) : undefined;
+  }
 
   protected fields(): HostFields {
     return standardFields;
@@ -265,6 +308,8 @@ export class HostConfigSync {
       rotateOidcSecret: config.update_oidc_client_secret,
       rotateLocalPassword: config.rotate_local_password,
       rotateSslCertPassword: config.rotate_ssl_cert_password,
+      testSecrets: config.test_secrets !== false,
+      probe: this.probe,
     });
   }
 }

@@ -1753,13 +1753,14 @@ names the field; no host settings are written.
 | `allowedHosts`           | string  | Comma-separated hosts allowed to access the UI.                            |
 | `local_username`         | string  | Local fallback account name.                                               |
 | `local_password`         | secret  | Local fallback password. Use `!secret` or `!env`, never a literal.         |
-| `rotate_local_password`  | boolean | Rewrite `local_password` even though the server returns it masked.         |
+| `rotate_local_password`  | boolean | Rewrite `local_password` even when the app already accepts it.             |
 | `oidcAuthority`          | string  | OIDC authority URL.                                                        |
 | `oidcClientId`           | string  | OIDC client id.                                                            |
 | `oidcUserIdentifier`     | string  | Claim used as the user identifier.                                         |
 | `oidcScopes`             | string  | Space-separated OIDC scopes.                                               |
 | `oidcClientSecret`       | secret  | OIDC client secret. Use `!secret` or `!env`.                               |
-| `update_oidc_client_secret` | boolean | Rewrite `oidcClientSecret` even though the server returns it masked.    |
+| `update_oidc_client_secret` | boolean | Rewrite `oidcClientSecret` even when the declared secret is already accepted. |
+| `test_secrets`           | boolean | Test declared `local_password` and `oidcClientSecret` against the app and identity provider. Default `true`. |
 | `enableSsl`              | boolean | Enable HTTPS.                                                              |
 | `sslCertPath`            | string  | Certificate path on the *arr server.                                       |
 | `sslKeyPath`             | string  | Private key path on the *arr server.                                       |
@@ -1795,12 +1796,27 @@ and certificates; some changes require a manual restart. Configarr does not chan
 keys or restart the server.
 
 The server masks existing secrets, so Configarr cannot compare them with your configured
-values. It writes `local_password`, `oidcClientSecret` or `ssl_cert_password` when the server
-has no value and otherwise preserves the existing secret. Set `rotate_local_password: true`,
-`update_oidc_client_secret: true` or `rotate_ssl_cert_password: true` to write it again, then
-remove the flag: while it remains enabled Configarr submits the secret on every run.
-`passwordConfirmation` is filled from `local_password` internally. Secrets are redacted from
-the diff report. `DRY_RUN` reports changes without writing them.
+values. Instead it tests the declared secret against the running configuration:
+
+- `local_password` is tried with the declared `local_username` (or the live username) by
+  posting to the app's `/login` endpoint. An auth cookie means the app already accepts the
+  password, so it is left untouched; a rejected login updates it.
+- `oidcClientSecret` is tried at the token endpoint from `oidcAuthority`'s discovery document,
+  using `oidcClientId`. A rejected client secret (`invalid_client`) updates it; a refused grant
+  (`unauthorized_client`, `invalid_grant`) means the client authenticated and is left alone.
+
+A probe makes at most one attempt and never logs the credentials or the response body. When the
+app or identity provider cannot be reached, Configarr falls back to the stored value: a secret
+is written when the server reports none and otherwise preserved. Set `test_secrets: false` to
+skip the probes entirely. `ssl_cert_password` has no endpoint to test, so it always uses the
+stored-value behaviour.
+
+Rotation flags still express intent: set `rotate_local_password: true` or
+`update_oidc_client_secret: true` to write a secret even when the declared value already works
+(for example to bootstrap a secret the API never returns). Remove the flag afterwards; while it
+remains enabled Configarr submits the secret on every run. `passwordConfirmation` is filled
+from `local_password` internally. Secrets are redacted from the diff report. `DRY_RUN` reports
+changes without writing them.
 
 Chaptarr additionally exposes `authenticationMethod: oidc` and the OIDC fields
 `oidc_allowed_emails`, `oidc_allowed_email_domains`, `oidc_require_email_verified` and

@@ -12,15 +12,37 @@ import { ChaptarrHostConfigSync, FederatedHostConfigSync, HostConfigSync, Prowla
 
 type StoredHostSettings = Record<string, unknown>;
 
-function stubHostApi(initial: StoredHostSettings, apiVersion?: "v3" | "v5") {
+type StubOptions = {
+  /** Password the simulated local login accepts, when the API deliberately hides the stored one. */
+  loginPassword?: string;
+  /** Let the login request fail at the transport layer instead of answering. */
+  loginUnavailable?: boolean;
+};
+
+function stubHostApi(initial: StoredHostSettings, apiVersion?: "v3" | "v5", options: StubOptions = {}) {
   let stored = { ...initial };
   const requests: string[] = [];
   const writes: StoredHostSettings[] = [];
+  let loginCalls = 0;
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (request: Request) => {
-      const path = new URL(request.url).pathname;
+    vi.fn(async (request: Request, init?: RequestInit) => {
+      const url = new URL(request.url ?? String(request));
+      const path = url.pathname;
       requests.push(`${request.method} ${path}`);
+      if (path === "/login") {
+        if (options.loginUnavailable) throw new TypeError("fetch failed");
+        loginCalls++;
+        const form = new URLSearchParams(await new Response(init?.body ?? (await (request as Request).text())).text());
+        const password = options.loginPassword ?? (typeof stored.password === "string" ? stored.password : undefined);
+        const accepted = !!password && form.get("username") === stored.username && form.get("password") === password;
+        return new Response(null, {
+          status: 302,
+          headers: accepted
+            ? { Location: "/", "Set-Cookie": "LidarrAuth=session; path=/; httponly" }
+            : { Location: "/login?returnUrl=&loginFailed=true" },
+        });
+      }
       if (path === "/api") return Response.json({ current: apiVersion ?? "v3" });
       if (request.method === "PUT") {
         const body = (await request.json()) as StoredHostSettings;
@@ -31,7 +53,52 @@ function stubHostApi(initial: StoredHostSettings, apiVersion?: "v3" | "v5") {
       return Response.json(stored);
     }),
   );
-  return { requests, writes, stored: () => stored };
+  return { requests, writes, loginCalls: () => loginCalls, stored: () => stored };
+}
+
+/** Simulates a Radarr host resource plus an IdP discovery/token endpoint. `undefined` makes discovery unreachable. */
+function stubOidcApi(tokenResponse?: () => Response) {
+  let stored: StoredHostSettings = {
+    id: 1,
+    oidcAuthority: "https://idp.test",
+    oidcClientId: "radarr",
+    oidcClientSecret: "********",
+  };
+  const writes: StoredHostSettings[] = [];
+  const tokenBodies: string[] = [];
+  let discoveryCalls = 0;
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (request: Request, init?: RequestInit) => {
+      const url = new URL(request.url ?? String(request));
+      if (url.hostname === "idp.test" && url.pathname === "/.well-known/openid-configuration") {
+        discoveryCalls++;
+        if (!tokenResponse) throw new TypeError("fetch failed");
+        return Response.json({ token_endpoint: "https://idp.test/token" });
+      }
+      if (url.hostname === "idp.test" && url.pathname === "/token") {
+        tokenBodies.push(await new Response(init?.body ?? "").text());
+        return tokenResponse?.() ?? Response.json({ error: "invalid_client" }, { status: 401 });
+      }
+      if (request.method === "PUT") {
+        const body = (await request.json()) as StoredHostSettings;
+        writes.push(body);
+        stored = { ...stored, ...body };
+        return Response.json({ id: 1 }, { status: 202 });
+      }
+      return Response.json(stored);
+    }),
+  );
+
+  return {
+    writes,
+    tokenBodies,
+    get discoveryCalls() {
+      return discoveryCalls;
+    },
+    stored: () => stored,
+  };
 }
 
 const backup = { backup_folder: "Backups", backup_interval: 7, backup_retention: 28 } satisfies HostConfig;
@@ -280,6 +347,105 @@ describe("host settings synchronization", () => {
     expect(report[0]?.fieldChanges).toEqual([{ field: "password", from: "********", to: "********" }]);
     expect(api.writes).toHaveLength(1);
     expect(JSON.stringify(report)).not.toContain("new-secret");
+  });
+
+  test("tests a declared local password and keeps it when the app accepts it", async () => {
+    // Chaptarr reports an empty password even when one is stored; the probe is the only signal.
+    const api = stubHostApi({ id: 1, username: "admin", password: "" }, undefined, { loginPassword: "generated-secret" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr", "http://lidarr.test");
+    const report = await sync.sync({ local_username: "admin", local_password: "generated-secret" });
+    expect(report).toEqual([]);
+    expect(api.loginCalls()).toBe(1);
+    expect(api.writes).toHaveLength(0);
+  });
+
+  test("corrects a local password the app rejects without waiting for the rotation flag", async () => {
+    const api = stubHostApi({ id: 1, username: "admin", password: "********" }, undefined, { loginPassword: "old-secret" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr", "http://lidarr.test");
+    const report = await sync.sync({ local_password: "new-secret" });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "password", from: "********", to: "********" }]);
+    expect(api.loginCalls()).toBe(1);
+    expect(api.writes).toHaveLength(1);
+    expect(api.stored().password).toBe("new-secret");
+    expect(JSON.stringify(report)).not.toContain("new-secret");
+  });
+
+  test("still rotates a local password the app already accepts when the flag is set", async () => {
+    const api = stubHostApi({ id: 1, username: "admin", password: "********" }, undefined, { loginPassword: "new-secret" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr", "http://lidarr.test");
+    const report = await sync.sync({ local_password: "new-secret", rotate_local_password: true });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "password", from: "********", to: "********" }]);
+    expect(api.loginCalls()).toBe(0);
+    expect(api.writes).toHaveLength(1);
+  });
+
+  test("skips the local password probe with test_secrets: false", async () => {
+    const api = stubHostApi({ id: 1, username: "admin", password: "" }, undefined, { loginPassword: "generated-secret" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr", "http://lidarr.test");
+    const report = await sync.sync({ local_username: "admin", local_password: "generated-secret", test_secrets: false });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "password", from: "********", to: "********" }]);
+    expect(api.loginCalls()).toBe(0);
+    expect(api.writes).toHaveLength(1);
+  });
+
+  test("falls back to the stored local password when the app cannot answer", async () => {
+    const api = stubHostApi({ id: 1, username: "admin", password: "********" }, undefined, { loginUnavailable: true });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr", "http://lidarr.test");
+    expect(await sync.sync({ local_password: "new-secret" })).toEqual([]);
+    expect(api.writes).toHaveLength(0);
+  });
+
+  test("keeps a declared OIDC secret the authority accepts", async () => {
+    const api = stubOidcApi(() => Response.json({ error: "unauthorized_client" }, { status: 400 }));
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr", "http://radarr.test");
+    const report = await sync.sync({
+      oidcAuthority: "https://idp.test",
+      oidcClientId: "radarr",
+      oidcClientSecret: "declared-secret",
+    });
+    expect(report).toEqual([]);
+    expect(api.tokenBodies).toEqual(["grant_type=client_credentials&client_id=radarr&client_secret=declared-secret"]);
+    expect(api.writes).toHaveLength(0);
+  });
+
+  test("updates a declared OIDC secret the authority rejects", async () => {
+    const api = stubOidcApi(() => Response.json({ error: "invalid_client" }, { status: 401 }));
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr", "http://radarr.test");
+    const report = await sync.sync({
+      oidcAuthority: "https://idp.test",
+      oidcClientId: "radarr",
+      oidcClientSecret: "declared-secret",
+    });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "oidcClientSecret", from: "********", to: "********" }]);
+    expect(api.writes).toHaveLength(1);
+    expect(api.stored().oidcClientSecret).toBe("declared-secret");
+  });
+
+  test("falls back to the stored OIDC secret when the authority is unreachable", async () => {
+    const api = stubOidcApi(undefined);
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr", "http://radarr.test");
+    const report = await sync.sync({
+      oidcAuthority: "https://idp.test",
+      oidcClientId: "radarr",
+      oidcClientSecret: "declared-secret",
+    });
+    expect(report).toEqual([]);
+    expect(api.discoveryCalls).toBe(1);
+    expect(api.writes).toHaveLength(0);
+  });
+
+  test("skips the OIDC probe with test_secrets: false", async () => {
+    const api = stubOidcApi(() => Response.json({ error: "invalid_client" }, { status: 401 }));
+    const sync = new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr", "http://radarr.test");
+    const report = await sync.sync({
+      oidcAuthority: "https://idp.test",
+      oidcClientId: "radarr",
+      oidcClientSecret: "declared-secret",
+      test_secrets: false,
+    });
+    expect(report).toEqual([]);
+    expect(api.discoveryCalls).toBe(0);
+    expect(api.writes).toHaveLength(0);
   });
 
   test("dry run reports a redacted secret change without writing", async () => {
