@@ -1,6 +1,6 @@
 # Chaptarr host config rejects `authenticationMethod: oidc`
 
-**Status:** proposed
+**Status:** implemented in `v1.39.3-etomm.7` (`a8a509f`) — superseded for the migration by the empty-secret issue below
 **Severity:** medium — Chaptarr's authentication cannot be declared, so every deployment keeps a side script
 **Area:** `src/hostConfig/hostConfigSync.ts`
 **Found in:** `1.39.3-etomm.5`
@@ -92,3 +92,18 @@ Make the allowed methods app-specific:
   apply: never compare the masked value, only write when rotation is requested.
 - If Chaptarr later adds another method, the per-app set is a single place to update — this is also an
   argument for reading the allowed values from the API if the schema ever exposes them.
+
+
+## Implementation status (v1.39.3-etomm.7, `a8a509f`)
+
+Shipped exactly as proposed: `authenticationMethods()` became an overridable method, the base set keeps
+`none/basic/forms/external`, and `ChaptarrHostConfigSync` overrides it with the base set plus `oidc`.
+The validation error now names the app: `<app> does not support authenticationMethod '<value>'`.
+
+Verified against the live instance: a Chaptarr `host_config` with `authenticationMethod: oidc` and the
+OIDC block now validates and runs (no `Unsupported authenticationMethod` error).
+
+**The migration is still blocked by a different gap**, discovered in the same dry run: Chaptarr returns
+empty strings rather than a mask for `password` and `oidcClientSecret`, so those fields never compare
+equal and the job would rewrite the host config every run. See
+`2026-11-23-host-config-empty-vs-masked-secrets.md`.
