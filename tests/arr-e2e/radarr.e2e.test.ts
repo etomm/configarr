@@ -190,13 +190,32 @@ describe("radarr (live)", () => {
     const original = await client.getHostConfig();
     const log_level = original.logLevel === "debug" ? "info" : "debug";
     const analytics_enabled = !original.analyticsEnabled;
+    const application_url =
+      original.applicationUrl === "http://radarr-e2e.local" ? "http://radarr-e2e-alt.local" : "http://radarr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/radarr-e2e.sh" ? "/config/radarr-e2e-alt.sh" : "/config/radarr-e2e.sh";
+    const log_size_limit = original.logSizeLimit === 10 ? 20 : 10;
+    const supportsTrustedNetworks = "trustedNetworks" in original;
+    const trusted_networks = original.trustedNetworks === "127.0.0.1/32" ? "127.0.0.1/32,::1/128" : "127.0.0.1/32";
+    const host_config = {
+      log_level,
+      analytics_enabled,
+      application_url,
+      update_script_path,
+      log_size_limit,
+      ...(supportsTrustedNetworks ? { trusted_networks } : {}),
+    };
     try {
-      const config = mediaConfig("RADARR", { host_config: { log_level, analytics_enabled } });
+      const config = mediaConfig("RADARR", { host_config });
       const first = await syncConfig(config);
       assertPipelineSucceeded(first.result, ["RADARR"]);
       const updated = await client.getHostConfig();
       expect(updated.logLevel).toBe(log_level);
       expect(updated.analyticsEnabled).toBe(analytics_enabled);
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
+      expect(updated.logSizeLimit).toBe(log_size_limit);
+      if (supportsTrustedNetworks) expect(updated.trustedNetworks).toBe(trusted_networks);
       const second = await syncConfig(config, first.workspace);
       assertPipelineSucceeded(second.result, ["RADARR"]);
       assertDiffUpToDate(second.result, ["RADARR"]);

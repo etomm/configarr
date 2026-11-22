@@ -193,6 +193,31 @@ describe("sonarr (live)", () => {
     }
   });
 
+  test("syncs additional host settings on every Sonarr version", async () => {
+    const original = await client.getHostConfig();
+    const application_url =
+      original.applicationUrl === "http://sonarr-e2e.local" ? "http://sonarr-e2e-alt.local" : "http://sonarr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/sonarr-e2e.sh" ? "/config/sonarr-e2e-alt.sh" : "/config/sonarr-e2e.sh";
+    const log_size_limit = original.logSizeLimit === 10 ? 20 : 10;
+    try {
+      const config = mediaConfig("SONARR", {
+        host_config: { application_url, update_script_path, log_size_limit },
+      });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["SONARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
+      expect(updated.logSizeLimit).toBe(log_size_limit);
+      const second = await syncConfig(config, first.workspace);
+      assertPipelineSucceeded(second.result, ["SONARR"]);
+      assertDiffUpToDate(second.result, ["SONARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test("syncs the backup policy on every Sonarr version", async () => {
     const original = await client.getHostConfig();
     const backup_interval = original.backupInterval === 7 ? 1 : 7;

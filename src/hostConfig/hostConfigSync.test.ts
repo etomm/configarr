@@ -8,7 +8,7 @@ import { WhisparrClient } from "../clients/whisparr-client";
 import { initEnvs } from "../env";
 import { logger } from "../logger";
 import type { HostConfig } from "./hostConfigSync";
-import { ChaptarrHostConfigSync, FederatedHostConfigSync, HostConfigSync } from "./hostConfigSync";
+import { ChaptarrHostConfigSync, FederatedHostConfigSync, HostConfigSync, ProwlarrHostConfigSync } from "./hostConfigSync";
 
 type StoredHostSettings = Record<string, unknown>;
 
@@ -93,6 +93,96 @@ describe("host settings synchronization", () => {
     const second = await sync.sync({ log_level: "info", analytics_enabled: false, instance_name: "media", url_base: "/new" });
     expect(second).toEqual([]);
     expect(api.writes).toHaveLength(1);
+  });
+
+  test("applies the remaining general fields while preserving authentication", async () => {
+    const api = stubHostApi({
+      id: 1,
+      authenticationMethod: "external",
+      allowedHosts: "localhost",
+      trustedNetworks: null,
+      logSizeLimit: 10,
+      consoleLogLevel: "info",
+      applicationUrl: "http://old.example.com",
+      updateScriptPath: "/config/old.sh",
+    });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    const config = {
+      trusted_networks: "192.168.0.0/24",
+      log_size_limit: 20,
+      console_log_level: "debug",
+      application_url: "http://new.example.com",
+      update_script_path: "/config/new.sh",
+    } satisfies HostConfig;
+    const diff = await sync.sync(config);
+    expect(diff[0]?.fieldChanges).toEqual([
+      { field: "trustedNetworks", from: null, to: "192.168.0.0/24" },
+      { field: "logSizeLimit", from: 10, to: 20 },
+      { field: "consoleLogLevel", from: "info", to: "debug" },
+      { field: "applicationUrl", from: "http://old.example.com", to: "http://new.example.com" },
+      { field: "updateScriptPath", from: "/config/old.sh", to: "/config/new.sh" },
+    ]);
+    expect(api.stored()).toMatchObject({
+      authenticationMethod: "external",
+      allowedHosts: "localhost",
+      trustedNetworks: "192.168.0.0/24",
+      logSizeLimit: 20,
+      consoleLogLevel: "debug",
+      applicationUrl: "http://new.example.com",
+      updateScriptPath: "/config/new.sh",
+    });
+    const second = await sync.sync(config);
+    expect(second).toEqual([]);
+    expect(api.writes).toHaveLength(1);
+  });
+
+  test("applies ssl_cert_password once and rewrites it only with the rotation flag", async () => {
+    const api = stubHostApi({ id: 1, sslCertPassword: "", enableSsl: false });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    const report = await sync.sync({ ssl_cert_password: "cert-secret" });
+    expect(report[0]?.fieldChanges).toEqual([{ field: "sslCertPassword", from: "********", to: "********" }]);
+    expect(api.stored().sslCertPassword).toBe("cert-secret");
+    expect(JSON.stringify(report)).not.toContain("cert-secret");
+
+    const second = await sync.sync({ ssl_cert_password: "cert-secret" });
+    expect(second).toEqual([]);
+    expect(api.writes).toHaveLength(1);
+
+    const rotated = await sync.sync({ ssl_cert_password: "rotated-secret", rotate_ssl_cert_password: true });
+    expect(rotated[0]?.fieldChanges).toEqual([{ field: "sslCertPassword", from: "********", to: "********" }]);
+    expect(api.stored().sslCertPassword).toBe("rotated-secret");
+    expect(api.writes).toHaveLength(2);
+    expect(JSON.stringify(rotated)).not.toContain("rotated-secret");
+  });
+
+  test("validates the SSL certificate password mask and rotation flag", () => {
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    expect(() => sync.validate({ ssl_cert_password: "********" })).toThrow("masked placeholder");
+    expect(() => sync.validate({ rotate_ssl_cert_password: true })).toThrow("requires ssl_cert_password");
+  });
+
+  test("applies Prowlarr history cleanup while preserving other settings", async () => {
+    const api = stubHostApi({ id: 1, historyCleanupDays: 30, applicationUrl: null });
+    const sync = new ProwlarrHostConfigSync(new ProwlarrClient("http://prowlarr.test", "key"), "Prowlarr");
+    const diff = await sync.sync({ history_cleanup_days: 60 });
+    expect(diff[0]?.fieldChanges).toEqual([{ field: "historyCleanupDays", from: 30, to: 60 }]);
+    expect(api.stored()).toMatchObject({ historyCleanupDays: 60, applicationUrl: null });
+
+    const second = await sync.sync({ history_cleanup_days: 60 });
+    expect(second).toEqual([]);
+    expect(api.writes).toHaveLength(1);
+  });
+
+  test("rejects Prowlarr-only history cleanup on other apps", () => {
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    expect(() => sync.sync({ history_cleanup_days: 30 })).toThrow("Lidarr host configuration does not expose history_cleanup_days");
+  });
+
+  test("rejects trusted networks when the live host resource does not expose it", async () => {
+    const api = stubHostApi({ id: 1, logLevel: "info" });
+    const sync = new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr");
+    await expect(sync.sync({ trusted_networks: "192.168.0.0/24" })).rejects.toThrow("does not expose trusted_networks");
+    expect(api.writes).toHaveLength(0);
   });
 
   test("sets an initially empty OIDC secret without disclosing it in the diff", async () => {
@@ -347,7 +437,7 @@ describe("host settings synchronization", () => {
     const apps = [
       { label: "Lidarr", create: () => new LidarrClient("http://lidarr.test", "key"), Sync: HostConfigSync },
       { label: "Readarr", create: () => new ReadarrClient("http://readarr.test", "key"), Sync: ChaptarrHostConfigSync },
-      { label: "Prowlarr", create: () => new ProwlarrClient("http://prowlarr.test", "key"), Sync: HostConfigSync },
+      { label: "Prowlarr", create: () => new ProwlarrClient("http://prowlarr.test", "key"), Sync: ProwlarrHostConfigSync },
     ];
     for (const app of apps) {
       const sync = new app.Sync(app.create(), app.label);
@@ -376,7 +466,7 @@ describe("host settings synchronization", () => {
         label: "Prowlarr",
         path: "/api/v1/config/host",
         create: () => new ProwlarrClient("http://prowlarr.test", "key"),
-        Sync: HostConfigSync,
+        Sync: ProwlarrHostConfigSync,
       },
     ];
     for (const app of apps) {

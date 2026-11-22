@@ -23,6 +23,13 @@ export type HostResource = {
   enableSsl?: boolean;
   sslCertPath?: string | null;
   sslKeyPath?: string | null;
+  sslCertPassword?: string | null;
+  trustedNetworks?: string | null;
+  logSizeLimit?: number | null;
+  consoleLogLevel?: string | null;
+  applicationUrl?: string | null;
+  updateScriptPath?: string | null;
+  historyCleanupDays?: number;
   whisparrAutoMatchOnDate?: boolean;
   whisparrCorruptFileDetection?: boolean;
   backupFolder?: string | null;
@@ -75,6 +82,12 @@ const standardFields = {
   update_mechanism: "updateMechanism",
   branch: "branch",
   url_base: "urlBase",
+  trusted_networks: "trustedNetworks",
+  log_size_limit: "logSizeLimit",
+  console_log_level: "consoleLogLevel",
+  application_url: "applicationUrl",
+  update_script_path: "updateScriptPath",
+  ssl_cert_password: "sslCertPassword",
   local_username: "username",
   local_password: "password",
 } as const satisfies HostFields;
@@ -88,6 +101,11 @@ const federatedFields = {
   oidcClientSecret: "oidcClientSecret",
 } as const satisfies HostFields;
 
+/** Fields only Prowlarr exposes. */
+const prowlarrFields = {
+  history_cleanup_days: "historyCleanupDays",
+} as const satisfies HostFields;
+
 /** Fields the Chaptarr fork adds on top of Readarr. */
 const chaptarrFields = {
   oidc_allowed_emails: "oidcAllowedEmails",
@@ -96,8 +114,8 @@ const chaptarrFields = {
   oidc_allow_any_verified_user: "oidcAllowAnyVerifiedUser",
 } as const satisfies HostFields;
 
-const secretKeys = new Set(["oidcClientSecret", "local_password"]);
-const controlKeys = new Set(["update_oidc_client_secret", "rotate_local_password"]);
+const secretKeys = new Set(["oidcClientSecret", "local_password", "ssl_cert_password"]);
+const controlKeys = new Set(["update_oidc_client_secret", "rotate_local_password", "rotate_ssl_cert_password"]);
 
 const authenticationMethods = new Set(["none", "basic", "forms", "external"]);
 const authenticationRequirements = new Set(["enabled", "disabledForLocalAddresses", "disabledForLocalhost"]);
@@ -107,6 +125,7 @@ type SyncOptions = {
   fields: HostFields;
   rotateOidcSecret?: boolean;
   rotateLocalPassword?: boolean;
+  rotateSslCertPassword?: boolean;
 };
 
 /**
@@ -143,6 +162,20 @@ export async function syncHostConfig(client: HostClient, config: HostConfig, opt
     ) {
       changes.push({ field: "oidcClientSecret", from: SECRET_MASK, to: SECRET_MASK });
       next = { ...next, oidcClientSecret: config.oidcClientSecret };
+    }
+  }
+
+  if ("ssl_cert_password" in options.fields && config.ssl_cert_password !== undefined) {
+    if (!Object.hasOwn(current, "sslCertPassword")) {
+      unsupported.push("ssl_cert_password");
+    } else if (
+      options.rotateSslCertPassword ||
+      (current.sslCertPassword !== SECRET_MASK && current.sslCertPassword !== config.ssl_cert_password)
+    ) {
+      // Like the other secrets, the API only returns a mask. Treat an unchanged mask as
+      // already applied so a declared password does not rewrite it on every run.
+      changes.push({ field: "sslCertPassword", from: SECRET_MASK, to: SECRET_MASK });
+      next = { ...next, sslCertPassword: config.ssl_cert_password };
     }
   }
 
@@ -198,6 +231,12 @@ export class HostConfigSync {
     if (config.rotate_local_password && config.local_password === undefined) {
       throw new ConfigValidationError("rotate_local_password requires local_password");
     }
+    if (config.ssl_cert_password === SECRET_MASK) {
+      throw new ConfigValidationError("ssl_cert_password cannot be the masked placeholder");
+    }
+    if (config.rotate_ssl_cert_password && config.ssl_cert_password === undefined) {
+      throw new ConfigValidationError("rotate_ssl_cert_password requires ssl_cert_password");
+    }
     if (config.authenticationMethod !== undefined && !authenticationMethods.has(config.authenticationMethod)) {
       throw new ConfigValidationError(`Unsupported authenticationMethod '${config.authenticationMethod}'`);
     }
@@ -214,6 +253,7 @@ export class HostConfigSync {
       fields: this.fields(),
       rotateOidcSecret: config.update_oidc_client_secret,
       rotateLocalPassword: config.rotate_local_password,
+      rotateSslCertPassword: config.rotate_ssl_cert_password,
     });
   }
 }
@@ -229,5 +269,12 @@ export class FederatedHostConfigSync extends HostConfigSync {
 export class ChaptarrHostConfigSync extends FederatedHostConfigSync {
   protected override fields(): HostFields {
     return { ...super.fields(), ...chaptarrFields };
+  }
+}
+
+/** Host settings for Prowlarr, which also exposes history cleanup retention. */
+export class ProwlarrHostConfigSync extends HostConfigSync {
+  protected override fields(): HostFields {
+    return { ...super.fields(), ...prowlarrFields };
   }
 }

@@ -625,6 +625,40 @@ describe("prowlarr (live)", () => {
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
   });
 
+  test("syncs additional host settings and stays idempotent", async () => {
+    const client = createProwlarrClient();
+    const original = await client.getHostConfig();
+    const application_url =
+      original.applicationUrl === "http://prowlarr-e2e.local" ? "http://prowlarr-e2e-alt.local" : "http://prowlarr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/prowlarr-e2e.sh" ? "/config/prowlarr-e2e-alt.sh" : "/config/prowlarr-e2e.sh";
+    const log_size_limit = original.logSizeLimit === 10 ? 20 : 10;
+    const history_cleanup_days = original.historyCleanupDays === 30 ? 60 : 30;
+    try {
+      const config = {
+        telemetry: false,
+        prowlarr: {
+          e2e: {
+            ...prowlarrConnection(),
+            host_config: { application_url, update_script_path, log_size_limit, history_cleanup_days },
+          },
+        },
+      };
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["PROWLARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
+      expect(updated.logSizeLimit).toBe(log_size_limit);
+      expect(updated.historyCleanupDays).toBe(history_cleanup_days);
+      const second = await syncConfig(config, first.workspace);
+      assertPipelineSucceeded(second.result, ["PROWLARR"]);
+      assertDiffUpToDate(second.result, ["PROWLARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test("syncs the backup policy and stays idempotent", async () => {
     const client = createProwlarrClient();
     const original = await client.getHostConfig();

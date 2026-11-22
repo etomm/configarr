@@ -1570,6 +1570,16 @@ when it was `true`; set it again afterwards if a reverse proxy depends on it. So
 | `update_mechanism`         | string  | `builtIn`, `script`, `external`, `apt` or `docker`.                                         |
 | `branch`                   | string  | Update branch.                                                                              |
 | `url_base`                 | string  | URL base path. Keep it in sync with the `base_url` used to reach the instance.              |
+| `application_url`          | string  | External URL the app uses in notifications and links.                                       |
+| `update_script_path`       | string  | Script the app runs on update when `update_mechanism` is `script`.                          |
+| `log_size_limit`           | integer | Rotate a log file after this size in MB. Not exposed by Readarr.                            |
+| `console_log_level`        | string  | Log level for console output on apps that expose a separate console level.                  |
+| `trusted_networks`         | string  | Comma-separated networks that skip authentication. Currently returned by Radarr (and Sonarr v5 when exposed). |
+| `history_cleanup_days`     | integer | Days of history to keep. Prowlarr only; other apps reject it.                               |
+
+`application_url`, `update_script_path`, `log_size_limit` and `console_log_level` are common
+*arr settings, but the running version may not return all of them. Readarr, for example, has
+no `log_size_limit`. Declaring a field the instance does not expose rejects the block.
 
 `update_automatically`, `update_mechanism` and `branch` can conflict with a separate
 image updater. Leave them out when GitOps owns the image version.
@@ -1583,6 +1593,9 @@ sonarr:
       log_level: info
       analytics_enabled: false
       instance_name: sonarr
+      application_url: https://sonarr.example.com
+      log_size_limit: 50
+      update_script_path: /config/update.sh
 ```
 
 ### Authentication and TLS
@@ -1609,6 +1622,8 @@ names the field; no host settings are written.
 | `enableSsl`              | boolean | Enable HTTPS.                                                              |
 | `sslCertPath`            | string  | Certificate path on the *arr server.                                       |
 | `sslKeyPath`             | string  | Private key path on the *arr server.                                       |
+| `ssl_cert_password`      | secret  | Certificate password, on instances that expose `sslCertPassword`.          |
+| `rotate_ssl_cert_password` | boolean | Rewrite `ssl_cert_password` even though the server returns it masked.    |
 
 ```yaml
 radarr:
@@ -1639,12 +1654,12 @@ and certificates; some changes require a manual restart. Configarr does not chan
 keys or restart the server.
 
 The server masks existing secrets, so Configarr cannot compare them with your configured
-values. It writes `local_password` or `oidcClientSecret` when the server has no value and
-otherwise preserves the existing secret. Set `rotate_local_password: true` or
-`update_oidc_client_secret: true` to write it again, then remove the flag: while it
-remains enabled Configarr submits the secret on every run. `passwordConfirmation` is
-filled from `local_password` internally. Secrets are redacted from the diff report.
-`DRY_RUN` reports changes without writing them.
+values. It writes `local_password`, `oidcClientSecret` or `ssl_cert_password` when the server
+has no value and otherwise preserves the existing secret. Set `rotate_local_password: true`,
+`update_oidc_client_secret: true` or `rotate_ssl_cert_password: true` to write it again, then
+remove the flag: while it remains enabled Configarr submits the secret on every run.
+`passwordConfirmation` is filled from `local_password` internally. Secrets are redacted from
+the diff report. `DRY_RUN` reports changes without writing them.
 
 Chaptarr additionally exposes the OIDC fields `oidc_allowed_emails`,
 `oidc_allowed_email_domains`, `oidc_require_email_verified` and
@@ -1669,6 +1684,22 @@ the shared host settings; the same shared `log_level`, credentials, backup, auth
 and TLS keys are applied when Whisparr returns them. Configarr reads back the settings after
 an update and reports an error if the server did not save them. The server must expose the
 requested fields and accept its current General settings when validating the update.
+
+### Settings Configarr does not manage
+
+Some host settings are deliberately excluded because changing them during a sync can break
+the instance or Configarr's own access:
+
+- `bindAddress`, `port` and `sslPort`: changing the listening address or port can make the
+  instance unreachable at the configured `base_url`.
+- `apiKey`: rotating it would invalidate the credential Configarr is using for the current
+  run.
+- the proxy block (`proxyEnabled`, `proxyType`, `proxyHostname`, `proxyPort`,
+  `proxyUsername`, `proxyPassword`, `proxyBypassFilter`, `proxyBypassLocalAddresses`):
+  a proxy change can cut off Configarr's connection and needs its own coordinated rollout.
+
+These fields are rejected when declared in `host_config`. Keep managing them in the UI or
+with an explicit, separate change.
 
 ## Experimental supported fields
 

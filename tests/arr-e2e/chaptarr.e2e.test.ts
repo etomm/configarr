@@ -591,13 +591,19 @@ describe("chaptarr (live)", () => {
   test("syncs general host settings and previews Chaptarr OIDC fields", async () => {
     const original = await client.getHostConfig();
     const log_level = original.logLevel === "debug" ? "info" : "debug";
+    const application_url =
+      original.applicationUrl === "http://chaptarr-e2e.local" ? "http://chaptarr-e2e-alt.local" : "http://chaptarr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/chaptarr-e2e.sh" ? "/config/chaptarr-e2e-alt.sh" : "/config/chaptarr-e2e.sh";
     const originalVerified = (original as unknown as { oidcRequireEmailVerified?: boolean }).oidcRequireEmailVerified ?? false;
     try {
-      const config = chaptarrConfig({ host_config: { log_level } });
+      const config = chaptarrConfig({ host_config: { log_level, application_url, update_script_path } });
       const first = await syncConfig(config);
       assertPipelineSucceeded(first.result, ["CHAPTARR"]);
       const updated = await client.getHostConfig();
       expect(updated.logLevel).toBe(log_level);
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
 
       const rejected = await syncConfig(chaptarrConfig({ host_config: { analytics_enabled: false } }), first.workspace);
       expect(rejected.result.exitCode).not.toBe(0);

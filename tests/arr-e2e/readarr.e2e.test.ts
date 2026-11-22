@@ -580,13 +580,21 @@ describe("readarr (live)", () => {
     const original = await client.getHostConfig();
     const log_level = original.logLevel === "debug" ? "info" : "debug";
     const analytics_enabled = !original.analyticsEnabled;
+    const application_url =
+      original.applicationUrl === "http://readarr-e2e.local" ? "http://readarr-e2e-alt.local" : "http://readarr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/readarr-e2e.sh" ? "/config/readarr-e2e-alt.sh" : "/config/readarr-e2e.sh";
     try {
-      const config = mediaConfig("READARR", { host_config: { log_level, analytics_enabled } });
+      const config = mediaConfig("READARR", {
+        host_config: { log_level, analytics_enabled, application_url, update_script_path },
+      });
       const first = await syncConfig(config);
       assertPipelineSucceeded(first.result, ["READARR"]);
       const updated = await client.getHostConfig();
       expect(updated.logLevel).toBe(log_level);
       expect(updated.analyticsEnabled).toBe(analytics_enabled);
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
 
       const rejected = await syncConfig(mediaConfig("READARR", { host_config: { oidcScopes: "openid" } }), first.workspace);
       expect(rejected.result.exitCode).not.toBe(0);
