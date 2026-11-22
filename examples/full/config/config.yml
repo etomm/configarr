@@ -202,9 +202,15 @@ sonarr:
     api_key: !secret SONARR_V5_API_KEY
     # (experimental) since v1.39.0. Optional host settings (paths are inside the Sonarr container).
     # Every declared field must be exposed by the instance.
+    # bindAddress/port/sslPort, apiKey and the proxy block are intentionally not managed:
+    # they can make the instance or this connection unreachable.
     # host_config:
     #   log_level: info
     #   analytics_enabled: false
+    #   application_url: https://sonarr.example.com
+    #   update_script_path: /config/update.sh
+    #   log_size_limit: 50
+    #   console_log_level: info
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -464,6 +470,12 @@ radarr:
     # host_config:
     #   log_level: info
     #   analytics_enabled: false
+    #   application_url: https://radarr.example.com
+    #   update_script_path: /config/update.sh
+    #   log_size_limit: 50
+    #   console_log_level: info
+    #   # Radarr (and Sonarr v5) only:
+    #   trusted_networks: "192.168.0.0/24"
     #   local_username: admin
     #   local_password: !secret RADARR_LOCAL_PASSWORD
     #   backup_folder: Backups
@@ -496,6 +508,10 @@ whisparr:
     #   whisparrAutoMatchOnDate: false
     #   whisparrCorruptFileDetection: true
     #   log_level: info
+    #   application_url: https://whisparr.example.com
+    #   update_script_path: /config/update.sh
+    #   log_size_limit: 50
+    #   console_log_level: info
     #   backup_interval: 7
     #   backup_retention: 28
 
@@ -574,9 +590,11 @@ readarr:
     base_url: http://readarr:8787 # instance URL
     api_key: !secret READARR_API_KEY # Reference to API key in secrets.yml
 
-    # (experimental) since v1.39.0. Optional host settings.
+    # (experimental) since v1.39.0. Optional host settings. Readarr has no log_size_limit.
     # host_config:
     #   log_level: info
+    #   application_url: https://readarr.example.com
+    #   update_script_path: /config/update.sh
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -743,6 +761,10 @@ lidarr:
     # (experimental) since v1.39.0. Optional host settings.
     # host_config:
     #   log_level: info
+    #   application_url: https://lidarr.example.com
+    #   update_script_path: /config/update.sh
+    #   log_size_limit: 50
+    #   console_log_level: info
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
@@ -852,6 +874,12 @@ prowlarr:
     # (experimental) since v1.39.0. Optional host settings.
     # host_config:
     #   log_level: info
+    #   application_url: https://prowlarr.example.com
+    #   update_script_path: /config/update.sh
+    #   log_size_limit: 50
+    #   console_log_level: info
+    #   # Prowlarr only:
+    #   history_cleanup_days: 365
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28

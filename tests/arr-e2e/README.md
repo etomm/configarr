@@ -91,6 +91,7 @@ Per-*arr files are deliberately duplicated instead of generated from a shared fa
 
 Host settings run on every app and version. A field the product or version does not expose rejects the block and names the field, including the authentication/OIDC block on older Radarr and Sonarr builds.
 The backup policy (`backup_folder`, `backup_interval`, `backup_retention`) is part of the same `host_config` block.
+The E2E suite also exercises `application_url` and `update_script_path` everywhere, `log_size_limit` where the app returns it, `trusted_networks` on Radarr and `history_cleanup_days` on Prowlarr. Bind addresses, ports, the API key and the proxy block are intentionally not managed.
 Chaptarr runs the same suite as Readarr in `chaptarr.e2e.test.ts`; the compose stack exposes it as `CHAPTARR` on `18788`.
 
 Feature × arr × create / update / delete / idempotent (second run Diff Report `(up to date - no changes)` + GET). `C` create, `U` update, `D` delete, `I` idempotent. `—` not applicable.

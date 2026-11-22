@@ -560,6 +560,9 @@ export const HostConfigSchema = z
     sslKeyPath: z.string().optional(),
     oidcClientSecret: z.string().optional(),
     update_oidc_client_secret: z.boolean().optional(),
+    // TLS certificate password. Masked by the API; rotation is explicit like the other secrets.
+    ssl_cert_password: z.string().optional(),
+    rotate_ssl_cert_password: z.boolean().optional(),
     whisparrAutoMatchOnDate: z.boolean().optional(),
     whisparrCorruptFileDetection: z.boolean().optional(),
     // Backup policy. Supported by every *arr; a relative `backup_folder` resolves against the
@@ -577,6 +580,14 @@ export const HostConfigSchema = z
     update_mechanism: z.string().optional(),
     branch: z.string().optional(),
     url_base: z.string().optional(),
+    // Common host settings. Applied only when the target's host resource exposes them.
+    trusted_networks: z.string().optional(),
+    log_size_limit: z.number().int().min(1).optional(),
+    console_log_level: z.string().optional(),
+    application_url: z.string().optional(),
+    update_script_path: z.string().optional(),
+    // Prowlarr-only history retention. Other apps reject it through the field group.
+    history_cleanup_days: z.number().int().min(1).optional(),
     // Local account kept as a fallback next to proxy authentication.
     local_username: z.string().optional(),
     local_password: z.string().optional(),

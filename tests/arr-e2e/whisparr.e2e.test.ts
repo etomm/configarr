@@ -548,6 +548,31 @@ describe("whisparr (live)", () => {
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
   });
 
+  test("syncs additional host settings and stays idempotent", async () => {
+    const original = await client.getHostConfig();
+    const application_url =
+      original.applicationUrl === "http://whisparr-e2e.local" ? "http://whisparr-e2e-alt.local" : "http://whisparr-e2e.local";
+    const update_script_path =
+      original.updateScriptPath === "/config/whisparr-e2e.sh" ? "/config/whisparr-e2e-alt.sh" : "/config/whisparr-e2e.sh";
+    const log_size_limit = original.logSizeLimit === 10 ? 20 : 10;
+    try {
+      const config = mediaConfig("WHISPARR", {
+        host_config: { application_url, update_script_path, log_size_limit },
+      });
+      const first = await syncConfig(config);
+      assertPipelineSucceeded(first.result, ["WHISPARR"]);
+      const updated = await client.getHostConfig();
+      expect(updated.applicationUrl).toBe(application_url);
+      expect(updated.updateScriptPath).toBe(update_script_path);
+      expect(updated.logSizeLimit).toBe(log_size_limit);
+      const second = await syncConfig(config, first.workspace);
+      assertPipelineSucceeded(second.result, ["WHISPARR"]);
+      assertDiffUpToDate(second.result, ["WHISPARR"]);
+    } finally {
+      await client.updateHostConfig(String(original.id), original);
+    }
+  });
+
   test("syncs the backup policy and stays idempotent", async () => {
     const original = await client.getHostConfig();
     const backup_interval = original.backupInterval === 7 ? 1 : 7;
