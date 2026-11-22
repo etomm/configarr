@@ -534,5 +534,36 @@ describe("ReadarrRootFolderSync", () => {
       expect(result).not.toHaveProperty("folderType");
       expect(result).not.toHaveProperty("ebookQualityProfileId");
     });
+
+    it("rejects nested Chaptarr media settings", async () => {
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig({ ...config, ebook: { monitored: true } }, serverCache),
+      ).rejects.toThrow("Root folder field 'ebook' is only supported by Chaptarr, not Readarr");
+
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig({ ...config, audiobook: { tags: ["x"] } }, serverCache),
+      ).rejects.toThrow("Root folder field 'audiobook' is only supported by Chaptarr, not Readarr");
+    });
+
+    it("rejects Chaptarr-only root fields", async () => {
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig({ ...config, folder_type: "mixed" }, serverCache),
+      ).rejects.toThrow("Root folder field 'folder_type' is only supported by Chaptarr, not Readarr");
+
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig({ ...config, place_ebooks_with_audiobooks: true }, serverCache),
+      ).rejects.toThrow("Root folder field 'place_ebooks_with_audiobooks' is only supported by Chaptarr, not Readarr");
+
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig(
+          { ...config, default_sync_monitored_across_formats: false },
+          serverCache,
+        ),
+      ).rejects.toThrow("Root folder field 'default_sync_monitored_across_formats' is only supported by Chaptarr, not Readarr");
+
+      await expect(
+        new ReadarrRootFolderSync(mockApi).resolveRootFolderConfig({ ...config, ebook_quality_profile: "eBook" }, serverCache),
+      ).rejects.toThrow("Root folder field 'ebook_quality_profile' is only supported by Chaptarr, not Readarr");
+    });
   });
 });

@@ -187,12 +187,40 @@ export type InputConfigRootFolderLidarr = z.infer<typeof InputConfigRootFolderLi
 export const ReadarrMediaTypeSchema = z.enum(["ebook", "audiobook", "mixed"]);
 export type ReadarrMediaType = z.infer<typeof ReadarrMediaTypeSchema>;
 
+const BookMonitorExistingModeSchema = z.enum(["all", "none", "missing", "existing"]);
+const BookMonitorNewItemsSchema = z.enum(["all", "none", "new"]);
+
+/**
+ * Chaptarr per-media settings. Vanilla Readarr shares this schema but rejects the block at sync time.
+ */
+export const InputConfigRootFolderReadarrMediaSettingsSchema = z.object({
+  quality_profile: z.string().optional(),
+  metadata_profile: z.string().optional(),
+  monitored: z.boolean().optional(),
+  // Canonical Chaptarr one-time monitoring selector.
+  monitor_existing: BookMonitorExistingModeSchema.optional(),
+  // Deprecated Chaptarr aliases; the canonical monitor_existing wins when both are set.
+  monitor_existing_books: z.boolean().optional(),
+  monitor_future: z.boolean().optional(),
+  monitor_new_items: BookMonitorNewItemsSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  write_audiobookshelf_metadata_json: z.boolean().optional(),
+  write_audiobookshelf_cover: z.boolean().optional(),
+});
+export type InputConfigRootFolderReadarrMediaSettings = z.infer<typeof InputConfigRootFolderReadarrMediaSettingsSchema>;
+
 export const InputConfigRootFolderReadarrSchema = z.object({
   path: z.string(),
   name: z.string(),
   metadata_profile: z.string(),
   quality_profile: z.string(),
   // Chaptarr typed folders. For a mixed folder each side falls back to the primary profile.
+  folder_type: ReadarrMediaTypeSchema.optional(),
+  ebook: InputConfigRootFolderReadarrMediaSettingsSchema.optional(),
+  audiobook: InputConfigRootFolderReadarrMediaSettingsSchema.optional(),
+  // Only meaningful for a mixed Chaptarr root folder.
+  place_ebooks_with_audiobooks: z.boolean().optional(),
+  default_sync_monitored_across_formats: z.boolean().optional(),
   ebook_quality_profile: z.string().optional(),
   ebook_metadata_profile: z.string().optional(),
   audiobook_quality_profile: z.string().optional(),

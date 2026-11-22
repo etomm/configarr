@@ -8,6 +8,7 @@ import type { ArrType, MediaArrType } from "../../src/types/common.types";
 export const E2E_API_KEY = "e2etestapikey0123456789abcdef012";
 export const E2E_ROOT_A = "/data/e2e";
 export const E2E_ROOT_B = "/data/e2e-b";
+export const E2E_ROOT_C = "/data/e2e-c";
 
 const DEFAULT_BASE_URL: Record<ArrType, string> = {
   SONARR: "http://127.0.0.1:18989",

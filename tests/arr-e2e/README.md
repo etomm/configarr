@@ -17,7 +17,7 @@ Wait until APIs respond (first boot ~30–90s), then from repo root:
 pnpm test:e2e:arr
 ```
 
-The suite only runs through its own config (`vitest.arr-e2e.config.ts`); `pnpm test` covers `src/**` and never picks it up, so there is no env flag to remember. If no container answers, the run fails immediately telling you to start the stack. Named volumes hold the DBs. Sonarr, Radarr, Readarr, Lidarr and Prowlarr get their API key from `<APP>__AUTH__APIKEY` env vars. Whisparr's eros base ignores those, so its container copies `fixtures/whisparr-config/config.xml` into the volume before starting. `/data/e2e` and `/data/e2e-b` are bind-mounted, so `PUID`/`PGID` must be your own user or *arr refuses the root folders.
+The suite only runs through its own config (`vitest.arr-e2e.config.ts`); `pnpm test` covers `src/**` and never picks it up, so there is no env flag to remember. If no container answers, the run fails immediately telling you to start the stack. Named volumes hold the DBs. Sonarr, Radarr, Readarr, Lidarr and Prowlarr get their API key from `<APP>__AUTH__APIKEY` env vars. Whisparr's eros base ignores those, so its container copies `fixtures/whisparr-config/config.xml` into the volume before starting. `/data/e2e`, `/data/e2e-b` and `/data/e2e-c` are bind-mounted, so `PUID`/`PGID` must be your own user or *arr refuses the root folders.
 
 ## Layout and run order
 

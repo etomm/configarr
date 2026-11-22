@@ -1,6 +1,7 @@
 import { MonitorTypes, NewItemMonitorTypes, type RootFolderResource } from "../__generated__/readarr/data-contracts";
 import type { InputConfigRootFolderReadarr } from "../types/config.types";
 import { toEnumOrThrow } from "../util";
+import { ConfigValidationError } from "../validation";
 import {
   type ProfileAwareRootFolderApi,
   type ProfileAwareRootFolderConfig,
@@ -12,6 +13,19 @@ export type ReadarrRootFolderApi<TResource extends RootFolderResource = RootFold
 
 type ReadarrRootFolderConfig = InputConfigRootFolderReadarr & ProfileAwareRootFolderConfig;
 
+/** Root-folder keys only Chaptarr understands. Vanilla Readarr rejects instead of silently ignoring them. */
+const chaptarrOnlyRootFolderKeys = [
+  "folder_type",
+  "ebook",
+  "audiobook",
+  "place_ebooks_with_audiobooks",
+  "default_sync_monitored_across_formats",
+  "ebook_quality_profile",
+  "ebook_metadata_profile",
+  "audiobook_quality_profile",
+  "audiobook_metadata_profile",
+] as const;
+
 export class ReadarrRootFolderSync<TResource extends RootFolderResource = RootFolderResource> extends ProfileAwareRootFolderSync<
   ReadarrRootFolderConfig,
   TResource
@@ -21,6 +35,14 @@ export class ReadarrRootFolderSync<TResource extends RootFolderResource = RootFo
   constructor(api: ReadarrRootFolderApi<TResource>, arrName = "Readarr") {
     super(api);
     this.arrName = arrName;
+  }
+
+  protected override validateRootFolderConfig(config: ReadarrRootFolderConfig): void {
+    for (const key of chaptarrOnlyRootFolderKeys) {
+      if (config[key] !== undefined) {
+        throw new ConfigValidationError(`Root folder field '${key}' is only supported by Chaptarr, not ${this.arrName}`);
+      }
+    }
   }
 
   protected buildResource(config: ReadarrRootFolderConfig, fields: ProfileAwareRootFolderFields): TResource {
