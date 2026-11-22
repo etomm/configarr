@@ -52,14 +52,18 @@ if [ "$merged" != "$current" ]; then
           done = 1
           next
         }
-        match($0, /^[[:space:]]*/)
-        print canonical(substr($0, 1, RLENGTH))
+        match($0, /<AllowedHosts/)
+        pendingPrefix = substr($0, 1, RSTART - 1)
         inside = 1
         done = 1
         next
       }
       inside {
-        if ($0 ~ /<\/AllowedHosts>/) inside = 0
+        if ($0 ~ /<\/AllowedHosts>/) {
+          match($0, /<\/AllowedHosts>/)
+          print pendingPrefix canonical("") substr($0, RSTART + RLENGTH)
+          inside = 0
+        }
         next
       }
       { print }
