@@ -128,15 +128,27 @@ So `invalid_client` is the only "secret is wrong" answer; `unauthorized_client` 
 authentication succeeded. No token needs to be minted to answer the question.
 
 **Reachability is the catch.** Configarr's job runs with the Dolguldur egress placement, and from a pod
-with the same nodeSelector/toleration the IdP is unreachable:
+with the same nodeSelector/toleration the IdP was initially unreachable:
 
 ```
 node-role worker + valinor.ercole.li/egress: dolguldur-vlan → discovery=000 (timeout)
 Proxmox host (same LAN)                                      → discovery=200
 ```
 
-So the OIDC probe is only possible when the job can reach the authority: either the egress policy
-allows the ingress VIP, or the authority is a public endpoint. Otherwise it must degrade gracefully.
+The cause is not DNS: both views resolve `mandos.doomring.valinor.ercole.li` to the Traefik LAN VIP
+`192.168.0.48`. Pods simply cannot reach that VIP, while they *can* reach the ingress Service
+(`10.43.103.193`). Pinning the name to the ClusterIP in CoreDNS fixes it cluster-wide — same name,
+same issuer, same `mandos-tls` certificate — and after that the probe works from a pod:
+
+```
+getent hosts mandos.doomring.valinor.ercole.li → 10.43.103.193
+discovery                                       → 200
+client_credentials, correct secret              → 400 unauthorized_client
+client_credentials, wrong secret                → 401 invalid_client
+```
+
+So the OIDC probe is viable wherever split-DNS or routing makes the authority reachable from the job;
+otherwise it must degrade to the rotation flag.
 
 ### Proposed algorithm
 
