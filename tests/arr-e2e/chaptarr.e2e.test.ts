@@ -50,7 +50,7 @@ const qualityProfile = (min_format_score = 0) => ({
   qualities: [{ name: "EPUB" }],
 });
 
-const qualityDefinition = (min: number) => ({ qualities: [{ quality: "EPUB", min, preferred: 50, max: 199.9 }] });
+const qualityDefinition = (min: number) => ({ qualities: [{ quality: "EPUB", min, max: 199.9 }] });
 
 const metadataProfile = (min_popularity = 0) => ({
   name: "e2e-meta",
@@ -250,6 +250,36 @@ describe("chaptarr (live)", () => {
     const updated = await syncConfig(chaptarrConfig({ quality_definition: qualityDefinition(3) }), created.workspace);
     assertPipelineSucceeded(updated.result, ["CHAPTARR"]);
     await waitUntil(async () => (await epub())?.minSize === 3);
+  });
+
+  test("quality definition sizes reject preferred and keep unlimited max", async () => {
+    const definitions = await client.getQualityDefinitions();
+    const flac = definitions.find((definition) => definition.quality?.name === "FLAC");
+    expect(flac).toBeDefined();
+    expect(flac?.maxSize ?? null).toBeNull();
+
+    const result = await syncConfig(
+      chaptarrConfig({
+        quality_definition: { qualities: [{ quality: "FLAC", min: 10, preferred: 20, max: "unlimited" }] },
+      }),
+    );
+    expect(result.result.exitCode).not.toBe(0);
+    expect(`${result.result.stdout}\n${result.result.stderr}`).toContain("'preferred' is not supported by Chaptarr");
+
+    const accepted = await syncConfig(
+      chaptarrConfig({ quality_definition: { qualities: [{ quality: "FLAC", min: 10, max: "unlimited" }] } }),
+      result.workspace,
+    );
+    assertPipelineSucceeded(accepted.result, ["CHAPTARR"]);
+    await waitUntil(
+      async () => (await client.getQualityDefinitions()).find((definition) => definition.quality?.name === "FLAC")?.minSize === 10,
+    );
+
+    const updated = (await client.getQualityDefinitions()).find(
+      (definition) => definition.quality?.name === "FLAC",
+    ) as (typeof definitions)[number] & { preferredSize?: number | null };
+    expect(updated?.preferredSize).toBeUndefined();
+    expect(updated?.maxSize ?? null).toBeNull();
   });
 
   test("media settings", async () => {

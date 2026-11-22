@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { type ConfigarrCF, ConfigarrCFSchema } from "../customFormats/customFormat.types";
-import { type TrashCF, TrashCFSchema, TrashQualityDefinitionQualitySchema, TrashScoresSchema } from "./trashguide.types";
+import {
+  InputConfigQualityDefinitionQualityPreferredSchema,
+  MinSizeValueSchema,
+  SizeValueSchema,
+  type TrashCF,
+  TrashCFSchema,
+  TrashScoresSchema,
+} from "./trashguide.types";
 
 // ============================================================================
 // Each type below is derived from its Zod schema (type X = z.infer<typeof XSchema>)
@@ -61,9 +68,9 @@ export type InputConfigQualityProfileItem = z.infer<typeof InputConfigQualityPro
 export const InputConfigQualitySizeSchema = z
   .object({
     quality: z.string(),
-    min: z.number().optional(),
-    preferred: z.number().optional(),
-    max: z.number().optional(),
+    min: MinSizeValueSchema.optional(),
+    preferred: SizeValueSchema.optional(),
+    max: SizeValueSchema.optional(),
   })
   .refine(
     ({ min, preferred, max }) => min !== undefined || preferred !== undefined || max !== undefined,
@@ -629,7 +636,25 @@ export const InputConfigArrInstanceSchema = z.object({
     .object({
       type: z.string().optional(),
       preferred_ratio: z.number().min(0).max(1).optional(),
-      qualities: z.array(TrashQualityDefinitionQualitySchema).optional(),
+      qualities: z.array(InputConfigQualityDefinitionQualityPreferredSchema).optional(),
+    })
+    // Interpolation needs numeric min/max/preferred; a null/unlimited entry makes
+    // `interpolateSize` do `null - n`, so the combination is rejected rather than guessed.
+    .superRefine((value, ctx) => {
+      if (value.preferred_ratio == null) {
+        return;
+      }
+      for (const [index, quality] of (value.qualities ?? []).entries()) {
+        for (const field of ["min", "preferred", "max"] as const) {
+          if (quality[field] === null) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["qualities", index, field],
+              message: `quality '${quality.quality}': '${field}' is unlimited/null, which cannot be combined with 'preferred_ratio'. Remove preferred_ratio or set a numeric '${field}'.`,
+            });
+          }
+        }
+      }
     })
     .optional(),
   include: z.array(InputConfigIncludeItemSchema).optional(),

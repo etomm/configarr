@@ -820,6 +820,35 @@ describe("radarr (live)", () => {
     await waitUntil(async () => (await webdl())?.minSize === 3);
   });
 
+  test("quality definition unlimited sizes", async () => {
+    const webdl = async () => (await client.getQualityDefinitions()).find((d) => d.quality?.name === "WEBDL-1080p");
+
+    const initial = await client.getQualityDefinitions();
+    expect(initial.find((d) => d.quality?.name === "BR-DISK")?.maxSize ?? null).toBeNull();
+    expect(initial.find((d) => d.quality?.name === "Raw-HD")?.maxSize ?? null).toBeNull();
+
+    const yaml = {
+      quality_definition: {
+        qualities: [
+          { quality: "WEBDL-1080p", max: "unlimited" },
+          { quality: "BR-DISK", max: "unlimited" },
+          { quality: "Raw-HD", max: "unlimited" },
+        ],
+      },
+    };
+
+    const created = await syncConfig(mediaConfig("RADARR", yaml));
+    assertPipelineSucceeded(created.result, ["RADARR"]);
+    await waitUntil(async () => ((await webdl())?.maxSize ?? null) === null);
+    expect((await webdl())?.maxSize ?? null).toBeNull();
+
+    const second = await syncConfig(mediaConfig("RADARR", yaml), created.workspace);
+    assertPipelineSucceeded(second.result, ["RADARR"]);
+    assertDiffUpToDate(second.result, ["RADARR"]);
+    expect((await webdl())?.maxSize ?? null).toBeNull();
+    expect((await client.getQualityDefinitions()).find((d) => d.quality?.name === "BR-DISK")?.maxSize ?? null).toBeNull();
+  });
+
   test("media settings", async () => {
     const created = await syncConfig(mediaConfig("RADARR", e2eMediaSettings(1)));
     assertPipelineSucceeded(created.result, ["RADARR"]);

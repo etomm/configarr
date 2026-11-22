@@ -13,6 +13,51 @@ export const TrashQualityDefinitionQualitySchema = z.object({
 });
 export type TrashQualityDefinitionQuality = z.infer<typeof TrashQualityDefinitionQualitySchema>;
 
+/**
+ * A size in a user config. The keyword `"unlimited"` is normalised to `null`; both mean
+ * "no limit". An *absent* field is different again: it leaves the server value unmanaged.
+ */
+export const SizeValueSchema = z
+  .union([z.number(), z.literal("unlimited"), z.null()])
+  .transform((value): number | null => (value === "unlimited" ? null : value));
+export type SizeValue = z.infer<typeof SizeValueSchema>;
+
+/** `min` has no "unlimited" meaning, so only a number or an explicit `null` (clear) is accepted. */
+export const MinSizeValueSchema = z.union([z.number(), z.null()], {
+  error: "'min' must be a number or null; 'unlimited' only applies to preferred and max.",
+});
+export type MinSizeValue = z.infer<typeof MinSizeValueSchema>;
+
+const atLeastOneQualityDefinitionSize = (value: { min?: unknown; preferred?: unknown; max?: unknown }, ctx: z.RefinementCtx): void => {
+  if (value.min !== undefined || value.preferred !== undefined || value.max !== undefined) {
+    return;
+  }
+  ctx.addIssue({ code: "custom", path: ["min"], message: "At least one of min, preferred, or max must be configured." });
+};
+
+const qualityDefinitionQualityBaseShape = {
+  quality: z.string(),
+  title: z.string().optional(),
+  min: MinSizeValueSchema.optional(),
+  max: SizeValueSchema.optional(),
+};
+
+/**
+ * Config-facing quality definition for apps whose API has no `preferredSize`
+ * (Readarr, Chaptarr). Whether an app actually accepts `preferred` is enforced at
+ * sync time, because the shared input schema cannot know which app it belongs to.
+ */
+export const InputConfigQualityDefinitionQualityBaseSchema = z
+  .strictObject(qualityDefinitionQualityBaseShape)
+  .superRefine(atLeastOneQualityDefinitionSize);
+export type InputConfigQualityDefinitionQualityBase = z.infer<typeof InputConfigQualityDefinitionQualityBaseSchema>;
+
+/** Config-facing quality definition for apps that expose `preferredSize` (Radarr, Sonarr v4, Lidarr, Whisparr). */
+export const InputConfigQualityDefinitionQualityPreferredSchema = z
+  .object({ ...qualityDefinitionQualityBaseShape, preferred: SizeValueSchema.optional() })
+  .superRefine(atLeastOneQualityDefinitionSize);
+export type InputConfigQualityDefinitionQualityPreferred = z.infer<typeof InputConfigQualityDefinitionQualityPreferredSchema>;
+
 export const TrashQualityDefinitionSchema = z.object({
   trash_id: z.string(),
   type: z.string(),

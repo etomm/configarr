@@ -251,6 +251,31 @@ describe("lidarr (live)", () => {
     await waitUntil(async () => (await flac())?.minSize === 3);
   });
 
+  test("quality definition unlimited sizes preserve a null preferred size", async () => {
+    const flac = async () => (await client.getQualityDefinitions()).find((d) => d.quality?.name === "FLAC");
+
+    // Lidarr migration 075 leaves PreferredSize null for rows whose max was null; it is
+    // supported server state and must survive a sync that only manages min/max.
+    const definitions = await client.getQualityDefinitions();
+    await client.updateQualityDefinitions(
+      definitions.map((definition) => (definition.quality?.name === "FLAC" ? { ...definition, preferredSize: null } : definition)),
+    );
+    await waitUntil(async () => ((await flac())?.preferredSize ?? null) === null);
+    expect((await flac())?.preferredSize ?? null).toBeNull();
+
+    const yaml = { quality_definition: { qualities: [{ quality: "FLAC", min: 3, max: "unlimited" }] } };
+    const created = await syncConfig(mediaConfig("LIDARR", yaml));
+    assertPipelineSucceeded(created.result, ["LIDARR"]);
+    await waitUntil(async () => (await flac())?.minSize === 3 && ((await flac())?.maxSize ?? null) === null);
+    expect((await flac())?.preferredSize ?? null).toBeNull();
+
+    const second = await syncConfig(mediaConfig("LIDARR", yaml), created.workspace);
+    assertPipelineSucceeded(second.result, ["LIDARR"]);
+    assertDiffUpToDate(second.result, ["LIDARR"]);
+    expect((await flac())?.maxSize ?? null).toBeNull();
+    expect((await flac())?.preferredSize ?? null).toBeNull();
+  });
+
   test("media settings", async () => {
     const created = await syncConfig(mediaConfig("LIDARR", e2eMediaSettings(1)));
     assertPipelineSucceeded(created.result, ["LIDARR"]);
