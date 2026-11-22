@@ -50,9 +50,32 @@ describe("host settings synchronization", () => {
     expect(() => sync.validate({ update_oidc_client_secret: true })).toThrow("requires oidcClientSecret");
     expect(() => sync.validate({ local_password: "********" })).toThrow("masked placeholder");
     expect(() => sync.validate({ rotate_local_password: true })).toThrow("requires local_password");
-    expect(() => sync.validate({ authenticationMethod: "magic" })).toThrow("Unsupported authenticationMethod");
+    expect(() => sync.validate({ authenticationMethod: "magic" })).toThrow("Radarr does not support authenticationMethod 'magic'");
     expect(() => sync.validate({ authenticationRequired: "sometimes" })).toThrow("Unsupported authenticationRequired");
     expect(() => sync.validate(backup)).not.toThrow();
+  });
+
+  test("accepts oidc only on the Chaptarr fork", () => {
+    const vanilla = [
+      { label: "Radarr", sync: new FederatedHostConfigSync(new RadarrClient("http://radarr.test", "key"), "Radarr") },
+      { label: "Sonarr", sync: new FederatedHostConfigSync(new SonarrClient("http://sonarr.test", "key"), "Sonarr") },
+      { label: "Whisparr", sync: new FederatedHostConfigSync(new WhisparrClient("http://whisparr.test", "key"), "Whisparr") },
+      { label: "Lidarr", sync: new HostConfigSync(new LidarrClient("http://lidarr.test", "key"), "Lidarr") },
+      { label: "Readarr", sync: new HostConfigSync(new ReadarrClient("http://readarr.test", "key"), "Readarr") },
+      { label: "Prowlarr", sync: new HostConfigSync(new ProwlarrClient("http://prowlarr.test", "key"), "Prowlarr") },
+    ];
+    for (const app of vanilla) {
+      expect(() => app.sync.validate({ authenticationMethod: "oidc" })).toThrow(
+        `${app.label} does not support authenticationMethod 'oidc'`,
+      );
+      expect(() => app.sync.validate({ authenticationMethod: "external" })).not.toThrow();
+      expect(() => app.sync.validate({ authenticationRequired: "sometimes" })).toThrow("Unsupported authenticationRequired");
+    }
+
+    const chaptarr = new ChaptarrHostConfigSync(new ReadarrClient("http://readarr.test", "key"), "Chaptarr");
+    expect(() => chaptarr.validate({ authenticationMethod: "oidc" })).not.toThrow();
+    expect(() => chaptarr.validate({ authenticationMethod: "external" })).not.toThrow();
+    expect(() => chaptarr.validate({ authenticationMethod: "magic" })).toThrow("Chaptarr does not support authenticationMethod 'magic'");
   });
 
   test("rejects fields outside the app's field group before reading the server", async () => {

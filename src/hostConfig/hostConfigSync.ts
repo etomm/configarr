@@ -117,7 +117,10 @@ const chaptarrFields = {
 const secretKeys = new Set(["oidcClientSecret", "local_password", "ssl_cert_password"]);
 const controlKeys = new Set(["update_oidc_client_secret", "rotate_local_password", "rotate_ssl_cert_password"]);
 
-const authenticationMethods = new Set(["none", "basic", "forms", "external"]);
+/** Authentication methods every supported *arr accepts. */
+const baseAuthenticationMethods = new Set(["none", "basic", "forms", "external"]);
+/** The Chaptarr fork also accepts OIDC, which vanilla Readarr does not. */
+const chaptarrAuthenticationMethods = new Set([...baseAuthenticationMethods, "oidc"]);
 const authenticationRequirements = new Set(["enabled", "disabledForLocalAddresses", "disabledForLocalhost"]);
 
 type SyncOptions = {
@@ -210,6 +213,14 @@ export class HostConfigSync {
     return standardFields;
   }
 
+  /**
+   * Authentication methods this app's host API accepts. OIDC is fork-only, so it is
+   * declared by the app that exposes it instead of widening the set for every app.
+   */
+  protected authenticationMethods(): ReadonlySet<string> {
+    return baseAuthenticationMethods;
+  }
+
   private assertSupported(config: HostConfig): void {
     const supported = new Set(Object.keys(this.fields()));
     const declared = Object.keys(config) as Array<keyof HostConfig>;
@@ -237,8 +248,8 @@ export class HostConfigSync {
     if (config.rotate_ssl_cert_password && config.ssl_cert_password === undefined) {
       throw new ConfigValidationError("rotate_ssl_cert_password requires ssl_cert_password");
     }
-    if (config.authenticationMethod !== undefined && !authenticationMethods.has(config.authenticationMethod)) {
-      throw new ConfigValidationError(`Unsupported authenticationMethod '${config.authenticationMethod}'`);
+    if (config.authenticationMethod !== undefined && !this.authenticationMethods().has(config.authenticationMethod)) {
+      throw new ConfigValidationError(`${this.appLabel} does not support authenticationMethod '${config.authenticationMethod}'`);
     }
     if (config.authenticationRequired !== undefined && !authenticationRequirements.has(config.authenticationRequired)) {
       throw new ConfigValidationError(`Unsupported authenticationRequired '${config.authenticationRequired}'`);
@@ -265,10 +276,14 @@ export class FederatedHostConfigSync extends HostConfigSync {
   }
 }
 
-/** Host settings for the Chaptarr fork, which adds its own OIDC fields on top of Readarr. */
+/** Host settings for the Chaptarr fork, which adds its own OIDC method and fields on top of Readarr. */
 export class ChaptarrHostConfigSync extends FederatedHostConfigSync {
   protected override fields(): HostFields {
     return { ...super.fields(), ...chaptarrFields };
+  }
+
+  protected override authenticationMethods(): ReadonlySet<string> {
+    return chaptarrAuthenticationMethods;
   }
 }
 

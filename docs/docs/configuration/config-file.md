@@ -1748,7 +1748,7 @@ names the field; no host settings are written.
 
 | Field                    | Type    | Meaning                                                                    |
 | ------------------------ | ------- | -------------------------------------------------------------------------- |
-| `authenticationMethod`   | string  | `none`, `basic`, `forms` or `external`.                                    |
+| `authenticationMethod`   | string  | `none`, `basic`, `forms` or `external`; Chaptarr also accepts `oidc`.      |
 | `authenticationRequired` | string  | `enabled`, `disabledForLocalAddresses` or `disabledForLocalhost`.          |
 | `allowedHosts`           | string  | Comma-separated hosts allowed to access the UI.                            |
 | `local_username`         | string  | Local fallback account name.                                               |
@@ -1802,10 +1802,11 @@ remove the flag: while it remains enabled Configarr submits the secret on every 
 `passwordConfirmation` is filled from `local_password` internally. Secrets are redacted from
 the diff report. `DRY_RUN` reports changes without writing them.
 
-Chaptarr additionally exposes the OIDC fields `oidc_allowed_emails`,
-`oidc_allowed_email_domains`, `oidc_require_email_verified` and
+Chaptarr additionally exposes `authenticationMethod: oidc` and the OIDC fields
+`oidc_allowed_emails`, `oidc_allowed_email_domains`, `oidc_require_email_verified` and
 `oidc_allow_any_verified_user`. They are applied when the instance returns them; vanilla
-Readarr rejects a block that declares them.
+Readarr rejects a block that declares them, and the other apps reject `oidc` with an error
+naming the app.
 
 Whisparr v3 supports the following separate allow-list in `host_config`, in addition to
 the backup policy:
