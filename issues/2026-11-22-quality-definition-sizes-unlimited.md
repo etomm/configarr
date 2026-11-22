@@ -1,6 +1,6 @@
 # Quality-definition sizes: unlimited values, per-app field sets and a `unlimited` keyword
 
-**Status:** implemented in `v1.39.3-etomm.5` (`c1588a5`) — one residual gap, see "Implementation status" at the end
+**Status:** implemented in `v1.39.3-etomm.5` (`c1588a5`)
 **Severity:** medium — a valid, common server state cannot be expressed without a misleading validation warning or an invented number
 **Area:** `src/types/trashguide.types.ts`, `src/types/config.types.ts`, `src/qualityDefinitions/`, `tests/arr-e2e/`
 **Found in:** `1.39.3-etomm.4`
@@ -205,10 +205,13 @@ Shipped and matching this issue:
 - Unit tests for normalisation, idempotency, `min: unlimited` rejection, ratio rejection; e2e tests
   added for Radarr, Lidarr, Readarr, Chaptarr and Sonarr.
 
-### Residual gap
+### Where `preferred` is rejected for Readarr/Chaptarr
 
-`InputConfigQualityDefinitionQualityBaseSchema` is exported and unit-tested but **not wired to
-Readarr/Chaptarr in production**: `src/types/config.types.ts` uses the *preferred* schema for every
-instance, so declaring `preferred` on a Readarr/Chaptarr instance is not rejected with an app-naming
-error — it is simply ignored by the Readarr sync path. Either the instance schema should select the
-base variant for those apps, or the syncer should reject `preferred` explicitly.
+`InputConfigQualityDefinitionQualityBaseSchema` exists for the *shape* (and for tests/docs), but the
+enforcement point is the syncer: `QualityDefinitionSync` takes `{ arrLabel, supportsPreferredSize }`
+and throws a validation error naming the app before any write when a `preferred` size is declared on
+an app that has no such field.
+
+- Unit: `src/qualityDefinitions/qualityDefinition.test.ts:313` — `test.each(["Readarr","Chaptarr"])`
+  asserting `calculateDiff(…, [{ quality: "SDTV", preferred: 50 }])` throws with the app label.
+- E2E: `tests/arr-e2e/readarr.e2e.test.ts:265` and `tests/arr-e2e/chaptarr.e2e.test.ts:298`.
