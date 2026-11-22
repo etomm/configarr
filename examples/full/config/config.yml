@@ -707,6 +707,33 @@ chaptarr:
     include:
       - template: readarr
 
+    # Root-level customFormatDefinitions may set a Chaptarr-only `applies_to`:
+    # both (default), ebook or audiobook.
+
+    # Chaptarr-only metadata profile fields.
+    # metadata_profiles:
+    #   - name: E-Book
+    #     profile_type: ebook # general, audiobook or ebook
+    #     skip_omnibus: true
+    #     skip_missing_identifier_omnibus: true
+    #     skip_missing_asin: true
+
+    # Chaptarr-only quality profile flags (convert_to_quality takes a quality name).
+    # quality_profiles:
+    #   - name: E-Book
+    #     qualities:
+    #       - name: EPUB
+    #       - name: M4B
+    #     confirm_automatic_upgrades: true
+    #     prefer_custom_formats_over_quality: true
+    #     convert_to_quality: M4B
+    #     # convert_mp3_to_m4b: true # deprecated alias for convert_to_quality: M4B
+
+    # Chaptarr-only ebook naming fields; merged over media_naming_api.
+    # ebook_rename_books: true
+    # ebook_replace_illegal_characters: true
+    # ebook_colon_replacement_format: 3
+
 lidarr:
   instance1:
     # Set the URL/API Key to your actual instance

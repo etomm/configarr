@@ -20,6 +20,13 @@ export type QualityProfileDiffResult<T extends QualityProfileShared = QualityPro
   changes: Map<string, FieldChange[]>;
 };
 
+const CHAPTARR_QUALITY_PROFILE_FIELDS = [
+  "confirm_automatic_upgrades",
+  "prefer_custom_formats_over_quality",
+  "convert_to_quality",
+  "convert_mp3_to_m4b",
+] as const satisfies readonly (keyof ConfigQualityProfile)[];
+
 export abstract class BaseQualityProfileSync<T extends QualityProfileShared> {
   protected readonly logger = logger;
 
@@ -74,6 +81,21 @@ export abstract class BaseQualityProfileSync<T extends QualityProfileShared> {
     return customFormats;
   }
 
+  /** App-specific config fields applied to an existing or new profile. Returns true when an update is needed. */
+  protected applyConfigToProfile(
+    _target: QualityProfileShared,
+    _config: ConfigQualityProfile,
+    _fieldChanges: FieldChange[],
+    _qualityToId: Map<string, number>,
+  ): boolean {
+    return false;
+  }
+
+  /** Whether the app understands the Chaptarr-only quality-profile config fields. */
+  protected supportsChaptarrQualityProfileFields(): boolean {
+    return false;
+  }
+
   createOnServer(profile: QualityProfileShared) {
     return this.api.createQualityProfile(this.toServerProfile(profile));
   }
@@ -95,6 +117,16 @@ export abstract class BaseQualityProfileSync<T extends QualityProfileShared> {
 
   async validateConfig(config: MergedConfigInstance): Promise<void> {
     await this.validateQualitySizeConfig(config.quality_profiles);
+    if (this.supportsChaptarrQualityProfileFields()) {
+      return;
+    }
+
+    for (const profile of config.quality_profiles) {
+      const field = CHAPTARR_QUALITY_PROFILE_FIELDS.find((candidate) => profile[candidate] !== undefined);
+      if (field !== undefined) {
+        throw new ConfigValidationError(`quality_profiles.${field} is supported only by Chaptarr`);
+      }
+    }
   }
 
   async persist(diff: QualityProfileDiffResult, write: boolean): Promise<void> {
@@ -219,6 +251,7 @@ export abstract class BaseQualityProfileSync<T extends QualityProfileShared> {
         }
 
         this.attachLanguageOnCreate(newP, profileLanguage);
+        this.applyConfigToProfile(newP, value, [], qualityToId);
         createQPs.push(newP);
         continue;
       }
@@ -250,6 +283,10 @@ export abstract class BaseQualityProfileSync<T extends QualityProfileShared> {
 
         return p;
       }, new Map());
+
+      if (this.applyConfigToProfile(updatedServerObject, value, fieldChanges, qualityToId)) {
+        diffExist = true;
+      }
 
       if (value.min_format_score != null) {
         if (serverMatch.minFormatScore !== value.min_format_score) {

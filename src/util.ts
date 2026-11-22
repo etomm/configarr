@@ -84,6 +84,8 @@ export const mapImportCfToRequestCf = (cf: TrashCF | ConfigarrCF): CustomFormatR
     throw new Error("ImportCF wrong");
   }
 
+  const { applies_to, ...requestCf } = rest;
+
   const specs = rest.specifications.map((spec) => {
     if (!spec.fields) {
       logger.info(`Spec: ${spec.name} fields is not defined`);
@@ -96,7 +98,7 @@ export const mapImportCfToRequestCf = (cf: TrashCF | ConfigarrCF): CustomFormatR
     };
   });
 
-  return { ...rest, specifications: specs };
+  return { ...requestCf, ...(applies_to !== undefined && { appliesTo: applies_to }), specifications: specs };
 };
 
 export function compareCustomFormats(

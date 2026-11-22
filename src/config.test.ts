@@ -607,6 +607,29 @@ describe("mergeConfigsAndTemplates", () => {
     expect(overridden.config.media_type).toBe("mixed");
   });
 
+  test("Chaptarr ebook naming toggles survive the merge", async () => {
+    vi.spyOn(reclarrImporter, "loadRecyclarrTemplates").mockReturnValue(new Map());
+    vi.spyOn(localImporter, "loadLocalRecyclarrTemplate").mockReturnValue(new Map());
+    vi.spyOn(trashGuide, "loadQPFromTrash").mockReturnValue(Promise.resolve(new Map()));
+    vi.spyOn(trashGuide, "loadTrashCustomFormatGroups").mockReturnValue(Promise.resolve(new Map()));
+
+    const result = await mergeConfigsAndTemplates(
+      {},
+      {
+        api_key: "test",
+        base_url: "http://chaptarr:8788",
+        ebook_rename_books: true,
+        ebook_replace_illegal_characters: false,
+        ebook_colon_replacement_format: 4,
+      },
+      "CHAPTARR",
+    );
+
+    expect(result.config.ebook_rename_books).toBe(true);
+    expect(result.config.ebook_replace_illegal_characters).toBe(false);
+    expect(result.config.ebook_colon_replacement_format).toBe(4);
+  });
+
   test("an instance download_clients block keeps a template secret flag it does not set", async () => {
     const templates: Map<string, MappedTemplates> = new Map([
       [

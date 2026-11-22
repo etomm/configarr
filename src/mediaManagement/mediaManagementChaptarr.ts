@@ -1,6 +1,6 @@
 import type { MediaManagementConfigResource, NamingConfigResource } from "../__generated__/readarr/data-contracts";
 import type { MediaManagementClient } from "../clients/capabilities";
-import type { MediaNamingApiType, ReadarrMediaType } from "../types/config.types";
+import type { MediaNamingApiType, MergedConfigInstance, ReadarrMediaType } from "../types/config.types";
 import { MediaManagementSync } from "./mediaManagement";
 
 /**
@@ -26,5 +26,24 @@ export class ChaptarrMediaManagementSync extends MediaManagementSync<NamingConfi
       ...(standardBookFormat !== undefined && { ebookStandardBookFormat: standardBookFormat }),
       ...(authorFolderFormat !== undefined && { ebookAuthorFolderFormat: authorFolderFormat }),
     };
+  }
+
+  protected override supportsEbookNamingFields(): boolean {
+    return true;
+  }
+
+  override resolveNamingConfig(config: MergedConfigInstance): MediaNamingApiType | undefined {
+    const ebook = {
+      ...(config.ebook_rename_books !== undefined && { ebookRenameBooks: config.ebook_rename_books }),
+      ...(config.ebook_replace_illegal_characters !== undefined && {
+        ebookReplaceIllegalCharacters: config.ebook_replace_illegal_characters,
+      }),
+      ...(config.ebook_colon_replacement_format !== undefined && {
+        ebookColonReplacementFormat: config.ebook_colon_replacement_format,
+      }),
+    };
+
+    if (Object.keys(ebook).length === 0) return super.resolveNamingConfig(config);
+    return { ...(config.media_naming_api ?? {}), ...ebook };
   }
 }

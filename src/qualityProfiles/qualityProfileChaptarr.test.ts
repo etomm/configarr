@@ -63,6 +63,7 @@ describe("QualityProfileChaptarrSync", () => {
   const definitions: QualityDefinitionShared[] = [
     { id: 1, title: "EPUB", quality: { id: 1, name: "EPUB" } },
     { id: 2, title: "MP3", quality: { id: 10, name: "MP3" } },
+    { id: 3, title: "M4B", quality: { id: 11, name: "M4B" } },
   ];
 
   test("does not admit a quality through a group label from the server profile", () => {
@@ -310,5 +311,120 @@ describe("QualityProfileChaptarrSync", () => {
     const formatItems = result.create[0]?.formatItems ?? [];
     expect(formatItems.map((item) => item.name)).toEqual(["ebook-only"]);
     expect(formatItems.every((item) => item.format != null)).toBe(true);
+  });
+
+  describe("Chaptarr profile flags", () => {
+    const profileFlags = {
+      confirm_automatic_upgrades: true,
+      prefer_custom_formats_over_quality: true,
+      convert_to_quality: "M4B",
+    };
+    const profileConfig = (overrides: Record<string, unknown> = {}) =>
+      ({
+        custom_formats: [],
+        quality_profiles: [
+          {
+            name: "Audio",
+            min_format_score: 0,
+            qualities: [{ name: "EPUB" }, { name: "M4B" }],
+            upgrade: { allowed: false, until_quality: "EPUB" },
+            score_set: "default",
+            ...overrides,
+          },
+        ],
+        customFormatDefinitions: [],
+        media_management: {},
+        media_naming: {},
+      }) as unknown as MergedConfigInstance;
+    const emptyCfMap: CFProcessing = { carrIdMapping: new Map(), cfNameToCarrConfig: new Map() };
+
+    test("applies the flags and resolves convert_to_quality to the M4B id", async () => {
+      const cache = new ServerCache({ qualityDefinitions: definitions, qualityProfiles: [], languages: [] });
+
+      const result = await new QualityProfileChaptarrSync(client, "mixed").calculateQualityProfilesDiff(
+        emptyCfMap,
+        profileConfig(profileFlags),
+        cache,
+      );
+
+      expect(result.create[0]).toMatchObject({
+        confirmAutomaticUpgrades: true,
+        preferCustomFormatsOverQuality: true,
+        convertToQualityId: 11,
+      });
+    });
+
+    test("maps the legacy convert_mp3_to_m4b alias to M4B", async () => {
+      const cache = new ServerCache({ qualityDefinitions: definitions, qualityProfiles: [], languages: [] });
+
+      const result = await new QualityProfileChaptarrSync(client, "audiobook").calculateQualityProfilesDiff(
+        emptyCfMap,
+        profileConfig({ convert_mp3_to_m4b: true }),
+        cache,
+      );
+
+      expect(result.create[0]).toMatchObject({ convertToQualityId: 11 });
+    });
+
+    test("updates an existing profile and is idempotent", async () => {
+      const serverProfile: QualityProfileShared & {
+        profileType: "audiobook";
+        confirmAutomaticUpgrades: boolean;
+        preferCustomFormatsOverQuality: boolean;
+        convertToQualityId: number;
+      } = {
+        id: 9,
+        name: "Audio",
+        profileType: "audiobook",
+        confirmAutomaticUpgrades: false,
+        preferCustomFormatsOverQuality: false,
+        convertToQualityId: 0,
+        upgradeAllowed: false,
+        items: [
+          { allowed: true, items: [], quality: { id: 1, name: "EPUB" } },
+          { allowed: true, items: [], quality: { id: 11, name: "M4B" } },
+        ],
+        formatItems: [],
+      };
+      const config = profileConfig(profileFlags);
+      const cache = new ServerCache({ qualityDefinitions: definitions, qualityProfiles: [serverProfile], languages: [] });
+
+      const diff = await new QualityProfileChaptarrSync(client, "mixed").calculateQualityProfilesDiff(emptyCfMap, config, cache);
+
+      expect(diff.changedQPs).toHaveLength(1);
+      expect(diff.changedQPs[0]).toMatchObject({
+        confirmAutomaticUpgrades: true,
+        preferCustomFormatsOverQuality: true,
+        convertToQualityId: 11,
+      });
+      expect(diff.changes.get("Audio")).toEqual(
+        expect.arrayContaining([
+          { field: "confirmAutomaticUpgrades", from: false, to: true },
+          { field: "preferCustomFormatsOverQuality", from: false, to: true },
+          { field: "convertToQualityId", from: 0, to: 11 },
+        ]),
+      );
+
+      const updatedCache = new ServerCache({
+        qualityDefinitions: definitions,
+        qualityProfiles: [{ ...serverProfile, ...diff.changedQPs[0] }],
+        languages: [],
+      });
+      const second = await new QualityProfileChaptarrSync(client, "mixed").calculateQualityProfilesDiff(emptyCfMap, config, updatedCache);
+      expect(second.changedQPs).toHaveLength(0);
+      expect(second.noChanges).toEqual(["Audio"]);
+    });
+
+    test("rejects an unknown convert_to_quality target", async () => {
+      const cache = new ServerCache({ qualityDefinitions: definitions, qualityProfiles: [], languages: [] });
+
+      await expect(
+        new QualityProfileChaptarrSync(client, "mixed").calculateQualityProfilesDiff(
+          emptyCfMap,
+          profileConfig({ convert_to_quality: "MP3" }),
+          cache,
+        ),
+      ).rejects.toThrow("configured convert_to_quality 'MP3' was not found on the server");
+    });
   });
 });

@@ -1,7 +1,7 @@
 import type { MediaManagementClient } from "../clients/capabilities";
 import type { DiffEntry, FieldChange } from "../diffReport/diffReport.types";
 import { logger } from "../logger";
-import type { MediaManagementType, MediaNamingApiType, MediaNamingType } from "../types/config.types";
+import type { MediaManagementType, MediaNamingApiType, MediaNamingType, MergedConfigInstance } from "../types/config.types";
 import type { TrashArrSupported } from "../types/trashguide.types";
 import { compareObjectsCarr } from "../util";
 import { ConfigValidationError } from "../validation";
@@ -100,6 +100,29 @@ export class MediaManagementSync<Naming extends { id?: number }, Management exte
     throw new ConfigValidationError(
       "skipFreeSpaceCheckWhenGrabbing, seasonPackUpgrade, seasonPackUpgradeThreshold, and userRejectedExtensions require Sonarr v5.",
     );
+  }
+
+  /** Whether the app understands the Chaptarr-only ebook naming config fields. */
+  protected supportsEbookNamingFields(): boolean {
+    return false;
+  }
+
+  async validateNamingConfig(config: MergedConfigInstance): Promise<void> {
+    if (this.supportsEbookNamingFields()) {
+      return;
+    }
+
+    const field = (["ebook_rename_books", "ebook_replace_illegal_characters", "ebook_colon_replacement_format"] as const).find(
+      (candidate) => config[candidate] !== undefined,
+    );
+    if (field !== undefined) {
+      throw new ConfigValidationError(`${field} is supported only by Chaptarr`);
+    }
+  }
+
+  /** Naming payload for this app, including app-specific aliases merged over `media_naming_api`. */
+  resolveNamingConfig(config: MergedConfigInstance): MediaNamingApiType | undefined {
+    return config.media_naming_api;
   }
 
   /** Map app-specific naming aliases before the diff. Identity by default. */

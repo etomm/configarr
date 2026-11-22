@@ -114,6 +114,12 @@ export const InputConfigQualityProfileSchema = z.object({
   quality_sort: z.string().optional(),
   language: z.string().optional(),
   qualities: z.array(InputConfigQualityProfileItemSchema).optional(),
+  // Chaptarr-only profile flags. Rejected on every other app by BaseQualityProfileSync.
+  confirm_automatic_upgrades: z.boolean().optional(),
+  prefer_custom_formats_over_quality: z.boolean().optional(),
+  convert_to_quality: z.string().optional(),
+  /** @deprecated Chaptarr alias for `convert_to_quality: M4B`; maps to the M4B quality id. */
+  convert_mp3_to_m4b: z.boolean().optional(),
 });
 export type InputConfigQualityProfile = z.infer<typeof InputConfigQualityProfileSchema>;
 
@@ -449,9 +455,19 @@ export const InputConfigReadarrMetadataProfileSchema = z.object({
 });
 export type InputConfigReadarrMetadataProfile = z.infer<typeof InputConfigReadarrMetadataProfileSchema>;
 
+export const InputConfigChaptarrMetadataProfileSchema = z.object({
+  // Chaptarr's profile type is numeric on the API: 0 general, 1 audiobook, 2 ebook.
+  profile_type: z.enum(["general", "audiobook", "ebook"]).optional(),
+  skip_omnibus: z.boolean().optional(),
+  skip_missing_identifier_omnibus: z.boolean().optional(),
+  skip_missing_asin: z.boolean().optional(),
+});
+export type InputConfigChaptarrMetadataProfile = z.infer<typeof InputConfigChaptarrMetadataProfileSchema>;
+
 export const InputConfigMetadataProfileSchema = z.object({
   ...InputConfigLidarrMetadataProfileSchema.shape,
   ...InputConfigReadarrMetadataProfileSchema.shape,
+  ...InputConfigChaptarrMetadataProfileSchema.shape,
 });
 export type InputConfigMetadataProfile = z.infer<typeof InputConfigMetadataProfileSchema>;
 
@@ -677,6 +693,10 @@ export const InputConfigArrInstanceSchema = z.object({
   indexer_config: IndexerConfigSchema.optional(),
   notifications: InputConfigNotificationsSchema.optional(),
   media_naming_api: MediaNamingApiTypeSchema.optional(),
+  // Chaptarr-only ebook naming toggles. Applied on top of `media_naming_api` and rejected elsewhere.
+  ebook_rename_books: z.boolean().optional(),
+  ebook_replace_illegal_characters: z.boolean().optional(),
+  ebook_colon_replacement_format: z.number().int().optional(),
   renameQualityProfiles: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   cloneQualityProfiles: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   media_naming: MediaNamingTypeSchema.optional(),
@@ -774,12 +794,28 @@ export type ConfigArrInstance = OmitTyped<
 
 export type ConfigQualityProfile = OmitTyped<
   Required<InputConfigQualityProfile>,
-  "qualities" | "quality_sizes" | "reset_unmatched_scores" | "language" | "score_set"
+  | "qualities"
+  | "quality_sizes"
+  | "reset_unmatched_scores"
+  | "language"
+  | "score_set"
+  | "confirm_automatic_upgrades"
+  | "prefer_custom_formats_over_quality"
+  | "convert_to_quality"
+  | "convert_mp3_to_m4b"
 > & {
   qualities: ConfigQualityProfileItem[];
   quality_sizes?: InputConfigQualitySize[];
   reset_unmatched_scores?: InputConfigQualityProfile["reset_unmatched_scores"];
-} & Pick<InputConfigQualityProfile, "language" | "score_set">;
+} & Pick<
+    InputConfigQualityProfile,
+    | "language"
+    | "score_set"
+    | "confirm_automatic_upgrades"
+    | "prefer_custom_formats_over_quality"
+    | "convert_to_quality"
+    | "convert_mp3_to_m4b"
+  >;
 
 export type ConfigQualityProfileItem = InputConfigQualityProfileItem;
 

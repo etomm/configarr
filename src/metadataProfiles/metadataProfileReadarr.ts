@@ -2,10 +2,27 @@ import type { MetadataProfileResource } from "../__generated__/readarr/data-cont
 import type { ServerCache } from "../cache";
 import type { MetadataProfilesClient } from "../clients/capabilities";
 import type { FieldChange } from "../diffReport/diffReport.types";
-import type { InputConfigMetadataProfile, InputConfigReadarrMetadataProfile } from "../types/config.types";
+import type {
+  InputConfigChaptarrMetadataProfile,
+  InputConfigMetadataProfile,
+  InputConfigReadarrMetadataProfile,
+} from "../types/config.types";
 import { compareObjectsCarr } from "../util";
+import { ConfigValidationError } from "../validation";
 import type { MetadataProfileDiff } from "./metadataProfile.types";
 import { BaseMetadataProfileSync } from "./metadataProfileBase";
+
+const CHAPTARR_METADATA_FIELDS = [
+  "profile_type",
+  "skip_omnibus",
+  "skip_missing_identifier_omnibus",
+  "skip_missing_asin",
+] as const satisfies readonly (keyof InputConfigChaptarrMetadataProfile)[];
+
+function chaptarrFieldsInProfile(profile: InputConfigMetadataProfile): string[] {
+  const chaptarr = profile as InputConfigChaptarrMetadataProfile;
+  return CHAPTARR_METADATA_FIELDS.filter((field) => chaptarr[field] !== undefined);
+}
 
 export class ReadarrMetadataProfileSync extends BaseMetadataProfileSync<MetadataProfileResource> {
   constructor(
@@ -60,7 +77,17 @@ export class ReadarrMetadataProfileSync extends BaseMetadataProfileSync<Metadata
     return unique.join(",");
   }
 
-  public async resolveConfig(config: InputConfigMetadataProfile, serverCache: ServerCache): Promise<MetadataProfileResource> {
+  protected rejectChaptarrOnlyFields(config: InputConfigMetadataProfile): void {
+    if (this.getArrType() !== "READARR") return;
+
+    const [field] = chaptarrFieldsInProfile(config);
+    if (field !== undefined) {
+      throw new ConfigValidationError(`metadata_profiles.${field} is supported only by Chaptarr`);
+    }
+  }
+
+  public async resolveConfig(config: InputConfigMetadataProfile, _serverCache: ServerCache): Promise<MetadataProfileResource> {
+    this.rejectChaptarrOnlyFields(config);
     const readarrConfig = config as InputConfigReadarrMetadataProfile;
 
     const result: MetadataProfileResource = {
@@ -109,32 +136,31 @@ export class ReadarrMetadataProfileSync extends BaseMetadataProfileSync<Metadata
     return result;
   }
 
+  protected normalizeForComparison(profile: MetadataProfileResource) {
+    const rawIgnored = profile.ignored ?? [];
+    const ignoredArray = Array.isArray(rawIgnored) ? rawIgnored : [String(rawIgnored)];
+
+    const normalizedAllowed = this.normalizeReadarrAllowedLanguages(profile.allowedLanguages ?? null);
+
+    return {
+      name: profile.name ?? "",
+      minPopularity: profile.minPopularity ?? 0,
+      skipMissingDate: Boolean(profile.skipMissingDate),
+      skipMissingIsbn: Boolean(profile.skipMissingIsbn),
+      skipPartsAndSets: Boolean(profile.skipPartsAndSets),
+      skipSeriesSecondary: Boolean(profile.skipSeriesSecondary),
+      allowedLanguages: normalizedAllowed,
+      minPages: profile.minPages ?? 0,
+      ignored: ignoredArray.slice().sort(),
+    };
+  }
+
   private compareConfig(
     resolvedConfig: MetadataProfileResource,
     serverProfile: MetadataProfileResource,
   ): { equal: boolean; changes: FieldChange[] } {
-    // Normalize both for comparison
-    const normalizeForComparison = (profile: MetadataProfileResource) => {
-      const rawIgnored = profile.ignored ?? [];
-      const ignoredArray = Array.isArray(rawIgnored) ? rawIgnored : [String(rawIgnored)];
-
-      const normalizedAllowed = this.normalizeReadarrAllowedLanguages(profile.allowedLanguages ?? null);
-
-      return {
-        name: profile.name ?? "",
-        minPopularity: profile.minPopularity ?? 0,
-        skipMissingDate: Boolean(profile.skipMissingDate),
-        skipMissingIsbn: Boolean(profile.skipMissingIsbn),
-        skipPartsAndSets: Boolean(profile.skipPartsAndSets),
-        skipSeriesSecondary: Boolean(profile.skipSeriesSecondary),
-        allowedLanguages: normalizedAllowed,
-        minPages: profile.minPages ?? 0,
-        ignored: ignoredArray.slice().sort(),
-      };
-    };
-
-    const normalizedConfig = normalizeForComparison(resolvedConfig);
-    const normalizedServer = normalizeForComparison(serverProfile);
+    const normalizedConfig = this.normalizeForComparison(resolvedConfig);
+    const normalizedServer = this.normalizeForComparison(serverProfile);
 
     return compareObjectsCarr(normalizedServer, normalizedConfig);
   }
@@ -146,6 +172,10 @@ export class ReadarrMetadataProfileSync extends BaseMetadataProfileSync<Metadata
     if (profiles == null) {
       this.logger.debug(`Config 'metadata_profiles' not specified. Ignoring.`);
       return null;
+    }
+
+    for (const profile of profiles) {
+      this.rejectChaptarrOnlyFields(profile);
     }
 
     const serverData = await this.loadFromServer();

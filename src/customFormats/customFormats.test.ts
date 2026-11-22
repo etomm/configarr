@@ -10,6 +10,7 @@ import type { ConfigCustomFormatList } from "../types/config.types";
 import type { TrashCF } from "../types/trashguide.types";
 import * as util from "../util";
 import type { CFIDToConfigGroup, CFProcessing, ConfigarrCF, CustomFormatRequest } from "./customFormat.types";
+import { ConfigarrCFSchema } from "./customFormat.types";
 import {
   calculateCFsToManage,
   loadCustomFormatDefinitions,
@@ -17,6 +18,7 @@ import {
   loadServerCustomFormats,
   manageCf,
   mergeCfSources,
+  withChaptarrCustomFormatDefaults,
 } from "./customFormats";
 
 vi.mock("node:fs");
@@ -355,6 +357,77 @@ describe("CustomFormats", () => {
       expect(out.diffEntries[0]!.resourceType).toBe("CustomFormat");
       expect(out.diffEntries[0]!.action).toBe("update");
       expect(out.diffEntries[0]!.fieldChanges).toContainEqual({ field: "specifications[0].negate", from: true, to: false });
+    });
+  });
+
+  describe("Chaptarr applies_to", () => {
+    it("validates the applies_to enum", () => {
+      expect(ConfigarrCFSchema.safeParse({ configarr_id: "id-a", name: "CF", applies_to: "ebook" }).success).toBe(true);
+      expect(ConfigarrCFSchema.safeParse({ configarr_id: "id-a", name: "CF", applies_to: "video" }).success).toBe(false);
+    });
+
+    it("maps applies_to to the appliesTo API field", () => {
+      const carrConfig = {
+        configarr_id: "id-a",
+        name: "Ebook CF",
+        applies_to: "ebook",
+        specifications: [{ name: "S0", implementation: "ReleaseTitleSpecification", fields: { value: "^(0)$" } }],
+      } as unknown as ConfigarrCF;
+
+      const request = util.mapImportCfToRequestCf(carrConfig);
+
+      expect(request.appliesTo).toBe("ebook");
+      expect(request).not.toHaveProperty("applies_to");
+    });
+
+    it("defaults an omitted applies_to to both", () => {
+      expect(withChaptarrCustomFormatDefaults({ name: "CF" })).toMatchObject({ appliesTo: "both" });
+      expect(withChaptarrCustomFormatDefaults({ name: "CF", appliesTo: "audiobook" })).toMatchObject({
+        appliesTo: "audiobook",
+      });
+    });
+
+    it("sends the default appliesTo when creating a Chaptarr custom format", async () => {
+      vi.spyOn(env, "getEnvs").mockReturnValue({ DRY_RUN: false } as ReturnType<typeof env.getEnvs>);
+
+      const carrConfig = {
+        configarr_id: "id-a",
+        name: "NewCF",
+        specifications: [{ name: "S0", implementation: "ReleaseTitleSpecification", fields: { value: "^(0)$" } }],
+      } as unknown as ConfigarrCF;
+      const requestConfig = util.mapImportCfToRequestCf(carrConfig);
+      const cfProcessing: CFProcessing = {
+        carrIdMapping: new Map([["id-a", { carrConfig, requestConfig }]]),
+        cfNameToCarrConfig: new Map([["NewCF", carrConfig]]),
+      };
+      const createCustomFormat = vi.fn().mockResolvedValue({ id: 1, name: "NewCF", appliesTo: "both" });
+      const mockClient = { createCustomFormat, updateCustomFormat: vi.fn() };
+
+      await manageCf(mockClient as never, cfProcessing, new Map(), withChaptarrCustomFormatDefaults);
+
+      expect(createCustomFormat).toHaveBeenCalledWith(expect.objectContaining({ name: "NewCF", appliesTo: "both" }));
+    });
+
+    it("is idempotent when the server already has appliesTo both", async () => {
+      vi.spyOn(env, "getEnvs").mockReturnValue({ DRY_RUN: false } as ReturnType<typeof env.getEnvs>);
+
+      const carrConfig = {
+        configarr_id: "id-a",
+        name: "NewCF",
+        specifications: [{ name: "S0", implementation: "ReleaseTitleSpecification", fields: { value: "^(0)$" } }],
+      } as unknown as ConfigarrCF;
+      const requestConfig = util.mapImportCfToRequestCf(carrConfig);
+      const cfProcessing: CFProcessing = {
+        carrIdMapping: new Map([["id-a", { carrConfig, requestConfig }]]),
+        cfNameToCarrConfig: new Map([["NewCF", carrConfig]]),
+      };
+      const serverCfs = new Map<string, CustomFormatRequest>([["NewCF", { id: 1, ...withChaptarrCustomFormatDefaults(requestConfig) }]]);
+      const mockClient = { createCustomFormat: vi.fn(), updateCustomFormat: vi.fn() };
+
+      const out = await manageCf(mockClient as never, cfProcessing, serverCfs, withChaptarrCustomFormatDefaults);
+
+      expect(out.diffEntries).toEqual([]);
+      expect(mockClient.updateCustomFormat).not.toHaveBeenCalled();
     });
   });
 

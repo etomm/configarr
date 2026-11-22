@@ -620,4 +620,41 @@ describe("readarr (live)", () => {
     expect(run.result.exitCode).not.toBe(0);
     expect(run.result.stdout + run.result.stderr).toContain("media_type is supported only by Chaptarr");
   });
+
+  test("rejects Chaptarr-only profile, custom-format and naming fields", async () => {
+    const cases = [
+      {
+        label: "metadata profile type",
+        message: "metadata_profiles.profile_type is supported only by Chaptarr",
+        config: mediaConfig("READARR", { metadata_profiles: [{ ...metadataProfile(), profile_type: "ebook" }] }),
+      },
+      {
+        label: "quality profile flags",
+        message: "quality_profiles.confirm_automatic_upgrades is supported only by Chaptarr",
+        config: mediaConfig("READARR", {
+          quality_profiles: [{ ...qualityProfile(), confirm_automatic_upgrades: true }],
+        }),
+      },
+      {
+        label: "custom format applies_to",
+        message: "customFormatDefinitions[].applies_to is supported only by Chaptarr",
+        config: mediaConfig(
+          "READARR",
+          { custom_formats: cfAssignBlock() },
+          { customFormatDefinitions: [{ ...e2eCustomFormatDefinition(), applies_to: "ebook" }] },
+        ),
+      },
+      {
+        label: "ebook naming",
+        message: "ebook_rename_books is supported only by Chaptarr",
+        config: mediaConfig("READARR", { ebook_rename_books: true }),
+      },
+    ];
+
+    for (const testCase of cases) {
+      const run = await syncConfig(testCase.config);
+      expect(run.result.exitCode, testCase.label).not.toBe(0);
+      expect(run.result.stdout + run.result.stderr, testCase.label).toContain(testCase.message);
+    }
+  });
 });

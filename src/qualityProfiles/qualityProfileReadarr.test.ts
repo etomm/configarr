@@ -74,4 +74,20 @@ describe("QualityProfileReadarrSync", () => {
 
     expect(diff.changedQPs).toHaveLength(1);
   });
+
+  test.each([
+    ["confirm_automatic_upgrades", { confirm_automatic_upgrades: true }],
+    ["prefer_custom_formats_over_quality", { prefer_custom_formats_over_quality: true }],
+    ["convert_to_quality", { convert_to_quality: "M4B" }],
+    ["convert_mp3_to_m4b", { convert_mp3_to_m4b: true }],
+  ] as const)("rejects Chaptarr-only field %s", async (field, value) => {
+    const withChaptarrField = {
+      ...config,
+      quality_profiles: [{ ...(config.quality_profiles[0] ?? {}), ...value }],
+    } as MergedConfigInstance;
+
+    await expect(new QualityProfileReadarrSync(qpClient).validateConfig(withChaptarrField)).rejects.toThrow(
+      `quality_profiles.${field} is supported only by Chaptarr`,
+    );
+  });
 });

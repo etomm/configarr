@@ -120,6 +120,8 @@ const mmSync = (order: Order) => ({
   validateConfig: vi.fn(async () => {
     order.push("validateMediaManagement");
   }),
+  validateNamingConfig: vi.fn(async () => undefined),
+  resolveNamingConfig: vi.fn((config: { media_naming_api?: unknown }) => config.media_naming_api),
   persistNaming: vi.fn(async () => {
     order.push("naming");
     return null;

@@ -544,6 +544,27 @@ sonarr:
               - WEBRip-1080p
 ```
 
+Chaptarr quality profiles accept these Chaptarr-only flags in addition to the shared fields above:
+
+```yml
+chaptarr:
+  ebook:
+    quality_profiles:
+      - name: E-Book
+        qualities:
+          - name: EPUB
+          - name: M4B
+        confirm_automatic_upgrades: true
+        prefer_custom_formats_over_quality: true
+        convert_to_quality: M4B # quality name; sent as convertToQualityId
+        # convert_mp3_to_m4b: true # deprecated alias for convert_to_quality: M4B
+```
+
+`convert_mp3_to_m4b: true` maps to the M4B quality; `false` disables conversion. An
+unknown `convert_to_quality` name fails validation before writing. These keys are rejected
+on vanilla Readarr and every other \*arr app. See [Chaptarr media types](#chaptarr-media-types)
+for metadata-profile and naming fields.
+
 Quality groups are named sets of qualities. The \*arr apps number groups from `1000` upwards,
 and a cutoff (and `upgrade.until_quality`) refers to that number. Configarr keeps the number
 stable: on update it reuses the id the server already uses for a group with the same name, and only
@@ -680,6 +701,8 @@ customFormatDefinitions:
     trash_description: "Language: German Only"
     name: "Language: Not German"
     includeCustomFormatWhenRenaming: false
+    # Chaptarr only: both (default), ebook or audiobook.
+    applies_to: both
     specifications:
       - name: Not German Language
         implementation: LanguageSpecification
@@ -689,6 +712,11 @@ customFormatDefinitions:
           value: 4
 # ...
 ```
+
+`applies_to` is a Chaptarr-only custom-format field. When omitted, Chaptarr creates the
+format with `appliesTo: both`. Vanilla Readarr and the other \*arr apps reject
+`applies_to` instead of silently dropping it. Chaptarr quality profiles only receive the
+custom formats whose `applies_to` matches the profile's media side (or `both`).
 
 ```yaml title="local-templates/template1.yml"
 # or in templates which can be included per instance
@@ -974,6 +1002,46 @@ chaptarr:
 For `mixed`, set `ebook_quality_profile`, `ebook_metadata_profile`,
 `audiobook_quality_profile` and `audiobook_metadata_profile` on the folder. Each side falls
 back to `quality_profile` / `metadata_profile` when omitted.
+
+#### Chaptarr profile, custom-format and naming fields
+
+Chaptarr exposes profile and naming fields that vanilla Readarr does not. Configarr accepts
+them in the `chaptarr:` section and rejects them on every other app.
+
+```yml
+chaptarr:
+  ebook:
+    # ...
+    metadata_profiles:
+      - name: E-Book
+        profile_type: ebook # general, audiobook or ebook
+        skip_omnibus: true
+        skip_missing_identifier_omnibus: true
+        skip_missing_asin: true
+    quality_profiles:
+      - name: E-Book
+        qualities:
+          - name: EPUB
+          - name: M4B
+        confirm_automatic_upgrades: true
+        prefer_custom_formats_over_quality: true
+        convert_to_quality: M4B
+    ebook_rename_books: true
+    ebook_replace_illegal_characters: true
+    ebook_colon_replacement_format: 3
+```
+
+- `profile_type` maps to Chaptarr's numeric `profileType` (`general` = 0,
+  `audiobook` = 1, `ebook` = 2). The omnibus and ASIN toggles map to
+  `skipOmnibus`, `skipMissingIdentifierOmnibus` and `skipMissingAsin`.
+- `convert_to_quality` resolves the quality name to its server id and sends
+  `convertToQualityId`. `convert_mp3_to_m4b` is the deprecated boolean alias for the M4B
+  quality.
+- `applies_to` belongs on custom-format definitions: `both` (default), `ebook` or
+  `audiobook`.
+- `ebook_rename_books`, `ebook_replace_illegal_characters` and
+  `ebook_colon_replacement_format` are applied on top of `media_naming_api`; the
+  passthrough map keeps working as before.
 
 With `media_type` set, a media-typed quality profile only considers its own media side:
 the qualities the existing server profile already contains plus the qualities the config
@@ -1700,6 +1768,11 @@ requested fields and accept its current General settings when validating the upd
   - `userRejectedExtensions`: comma-separated additional file extensions (with or without leading dots). Sonarr rejects valid media and archive extensions from this list. To fail a download for a configured extension, enable the separate **User Defined Extensions** fail-download option on the applicable indexers.
 
   These fields are Sonarr v5-only; Configarr rejects them on Sonarr v4 and other media managers before applying any sync changes.
+
+  Chaptarr additionally accepts the explicit ebook naming fields `ebook_rename_books`,
+  `ebook_replace_illegal_characters` and `ebook_colon_replacement_format`, mapped to
+  `ebookRenameBooks`, `ebookReplaceIllegalCharacters` and `ebookColonReplacementFormat`.
+  They are merged over `media_naming_api` and rejected on other media managers.
 
 - Experimental support for `ui_config` (since v1.21.0)
   Allows configuring UI settings like theme, language, calendar preferences, etc. on
