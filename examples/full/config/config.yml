@@ -581,6 +581,11 @@ readarr:
     #     metadata_profile: Standard
     #     quality_profile: E-Book
 
+    # (experimental) since v1.21.0. UI settings.
+    # ui_config:
+    #   theme: dark
+    #   firstDayOfWeek: 1
+
     # not supported
     # quality_definition:
     #   type: movie # Quality definition type
@@ -813,6 +818,11 @@ prowlarr:
     #   backup_folder: Backups
     #   backup_interval: 7
     #   backup_retention: 28
+
+    # (experimental) since v1.21.0. UI settings.
+    # ui_config:
+    #   theme: dark
+    #   firstDayOfWeek: 1
 
     # Ensure these tag labels exist (created if missing)
     tags:

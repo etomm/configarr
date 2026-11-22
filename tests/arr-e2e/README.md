@@ -101,7 +101,8 @@ Feature × arr × create / update / delete / idempotent (second run Diff Report 
 | Quality profiles               | CUDI     | CUDI     | CUDI     | CUDI     | CUDI     | —        |
 | Quality definitions            | CUI      | CUI      | CUI      | CUI      | CUI      | —        |
 | Root folders                   | CDI      | CDI      | CDI      | CUDI     | CUDI     | —        |
-| Media settings (MM/naming/UI)  | CUI      | CUI      | CUI      | CUI      | CUI      | —        |
+| Media settings (MM/naming)     | CUI      | CUI      | CUI      | CUI      | CUI      | —        |
+| UI settings (`ui_config`)      | CUI      | CUI      | CUI      | CUI      | CUI      | CUI      |
 | General auth/TLS settings      | CUI      | CUI      | —        | —        | —        | —        |
 | Backup policy (`host_config`)  | CUI      | CUI      | CUI      | CUI      | CUI      | CUI      |
 | Delay profiles                 | CUDI     | CUDI     | CUDI     | CUDI     | CUDI     | —        |

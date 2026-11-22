@@ -9,6 +9,7 @@ import type {
   IndexerResource,
   NotificationResource,
   TagResource,
+  UiConfigResource,
 } from "../__generated__/prowlarr/data-contracts";
 import { KyHttpClient } from "../ky-client";
 import { logger } from "../logger";
@@ -190,6 +191,14 @@ export class ProwlarrClient implements SystemClient, TagsClient<TagResource>, Do
 
   async updateHostConfig(id: string, data: HostConfigResource): Promise<void> {
     await this.api.v1ConfigHostUpdate(id, data, { redactResponseErrors: true });
+  }
+
+  async getUiConfig(): Promise<UiConfigResource> {
+    return this.api.v1ConfigUiList({ redactResponseErrors: true });
+  }
+
+  async updateUiConfig(id: string, data: UiConfigResource): Promise<UiConfigResource> {
+    return this.api.v1ConfigUiUpdate(id, data, { redactResponseErrors: true });
   }
 
   async testConnection() {

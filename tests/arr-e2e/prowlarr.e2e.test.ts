@@ -623,18 +623,26 @@ describe("prowlarr (live)", () => {
     expect(findNamed(await client.getNotifications(), "e2e-notification")).toBeUndefined();
   });
 
-  test("syncs the backup policy and stays idempotent", async () => {
+  test("syncs the backup policy and ui_config, and stays idempotent", async () => {
     const client = createProwlarrClient();
     const original = await client.getHostConfig();
+    const originalUi = await client.getUiConfig();
     const backup_interval = original.backupInterval === 7 ? 1 : 7;
     const backup_retention = original.backupRetention === 28 ? 7 : 28;
     const backup_folder = original.backupFolder === "Backups-e2e" ? "Backups" : "Backups-e2e";
+    const theme = originalUi.theme === "dark" ? "light" : "dark";
     try {
       // Only the instance connection and host settings: application sync validates Prowlarr
       // callbacks, which the host-settings fixture cannot satisfy without a restart.
       const config = {
         telemetry: false,
-        prowlarr: { e2e: { ...prowlarrConnection(), host_config: { backup_folder, backup_interval, backup_retention } } },
+        prowlarr: {
+          e2e: {
+            ...prowlarrConnection(),
+            host_config: { backup_folder, backup_interval, backup_retention },
+            ui_config: { theme },
+          },
+        },
       };
       const first = await syncConfig(config);
       assertPipelineSucceeded(first.result, ["PROWLARR"]);
@@ -642,10 +650,12 @@ describe("prowlarr (live)", () => {
       expect(updated.backupInterval).toBe(backup_interval);
       expect(updated.backupRetention).toBe(backup_retention);
       expect(updated.backupFolder).toBe(backup_folder);
+      expect((await client.getUiConfig()).theme).toBe(theme);
       const second = await syncConfig(config, first.workspace);
       assertPipelineSucceeded(second.result, ["PROWLARR"]);
       assertDiffUpToDate(second.result, ["PROWLARR"]);
     } finally {
+      await client.updateUiConfig(String(originalUi.id), originalUi);
       await client.updateHostConfig(String(original.id), original);
     }
   });

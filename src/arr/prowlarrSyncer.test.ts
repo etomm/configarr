@@ -18,6 +18,8 @@ const prowlarrClient = {
   getSystemStatus: vi.fn(async () => ({ version: "1" })),
   getHostConfig: vi.fn(async () => ({ id: 1, backupFolder: "Backups", backupInterval: 7, backupRetention: 28 })),
   updateHostConfig: vi.fn(async () => undefined),
+  getUiConfig: vi.fn(async () => ({ id: 1, theme: "light", firstDayOfWeek: 1 })),
+  updateUiConfig: vi.fn(async () => ({ id: 1 })),
 };
 vi.mock("../logger", () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("../clients/client", () => ({ getClient: vi.fn(() => prowlarrClient) }));
@@ -82,6 +84,15 @@ describe("ProwlarrSyncer", () => {
     );
     expect(report.entries).toContainEqual(
       expect.objectContaining({ resourceType: "HostConfig", fieldChanges: [{ field: "backupInterval", from: 7, to: 1 }] }),
+    );
+  });
+
+  it("syncs ui_config", async () => {
+    const report = await new ProwlarrSyncer().run(instance({ ui_config: { theme: "dark" } }), "e2e");
+
+    expect(prowlarrClient.updateUiConfig).toHaveBeenCalledWith("1", expect.objectContaining({ theme: "dark" }));
+    expect(report.entries).toContainEqual(
+      expect.objectContaining({ resourceType: "UiConfig", fieldChanges: [{ field: "theme", from: "light", to: "dark" }] }),
     );
   });
 
